@@ -159,52 +159,60 @@ class ChannelStatsScraper(BaseScraper):
         """Calculate average views from the last 30 videos by visiting the channel page, excluding top and bottom 3 performing videos"""
         try:
             print(f"\nGetting average views from {channel_url}...")
-            self.page.goto(channel_url + '/videos')
-            self.page.wait_for_load_state('networkidle')
+            # Only wait for network to be mostly idle, not completely idle
+            self.page.goto(channel_url + '/videos', wait_until='networkidle')
             
-            # Scroll a few times to load more videos
+            # Scroll faster with shorter waits
             last_height = 0
-            for _ in range(3):  # Scroll 3 times to get more videos
+            for _ in range(2):  # Reduce to 2 scrolls since we're getting 30 videos anyway
                 self.page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)')
-                self.page.wait_for_timeout(1000)  # Wait for content to load
+                self.page.wait_for_timeout(500)  # Reduced from 1000ms to 500ms
                 new_height = self.page.evaluate('document.documentElement.scrollHeight')
                 if new_height == last_height:
                     break
                 last_height = new_height
             
-            # Extract video information using JavaScript
+            # Extract video information using JavaScript - optimized to get all data in one pass
             videos_info = self.page.evaluate("""() => {
+                const processViewCount = (text) => {
+                    if (!text) return 0;
+                    text = text.toLowerCase().replace('views', '').replace(',', '').trim();
+                    try {
+                        if (text.includes('k')) {
+                            return parseFloat(text.replace('k', '')) * 1000;
+                        } else if (text.includes('m')) {
+                            return parseFloat(text.replace('m', '')) * 1000000;
+                        } else {
+                            return parseFloat(text);
+                        }
+                    } catch {
+                        return 0;
+                    }
+                };
+
                 const videos = Array.from(document.querySelectorAll('ytd-rich-grid-media, ytd-grid-video-renderer')).slice(0, 30);
-                return videos.map(video => {
+                const views = videos.map(video => {
                     const metadataLine = video.querySelector('#metadata-line');
-                    let viewCountText = '';
-                    if (metadataLine) {
-                        const spans = Array.from(metadataLine.querySelectorAll('span'));
-                        for (const span of spans) {
-                            if (span.textContent.includes('views')) {
-                                viewCountText = span.textContent;
-                                break;
-                            }
+                    if (!metadataLine) return 0;
+                    
+                    const spans = Array.from(metadataLine.querySelectorAll('span'));
+                    for (const span of spans) {
+                        if (span.textContent.includes('views')) {
+                            return processViewCount(span.textContent);
                         }
                     }
-                    return { views: viewCountText };
-                });
+                    return 0;
+                }).filter(views => views > 0);
+
+                return views;
             }""")
             
             if not videos_info:
                 print("No videos found on channel page")
                 return 0
             
-            # Parse view counts
-            views = []
-            for video in videos_info:
-                try:
-                    view_count = self.parse_view_count(video['views'])
-                    if view_count > 0:
-                        views.append(view_count)
-                except Exception as e:
-                    print(f"Error parsing view count: {e}")
-                    continue
+            # videos_info is now already an array of numbers, no need for parsing
+            views = videos_info
             
             if len(views) >= 7:  # Only exclude top/bottom 3 if we have at least 7 videos
                 # Sort views in ascending order
@@ -253,7 +261,7 @@ class ChannelStatsScraper(BaseScraper):
         cursor = self.db.db.cursor()
         
         try:
-            # Calculate average views from last 10 videos on channel page
+            # Calculate average views from last 30 videos on channel page
             average_views = self.get_channel_average_views(info['url'])
             
             # First check if channel exists
@@ -316,8 +324,11 @@ class ChannelStatsScraper(BaseScraper):
         
         # Update information for all channels found
         updated_count = 0
-        for channel_id, info in channel_info.items():
+        total_channels = len(channel_info)
+        
+        for i, (channel_id, info) in enumerate(channel_info.items(), 1):
             try:
+                print(f"\nProcessing channel {i}/{total_channels}: {info['name']}")
                 subscriber_count = info.get('subscriber_count')
                 if subscriber_count is not None:  # Only update if we have a valid subscriber count
                     self.update_channel_info(channel_id, info)
