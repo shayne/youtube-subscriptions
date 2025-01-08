@@ -156,7 +156,7 @@ class ChannelStatsScraper(BaseScraper):
             return {}
 
     def get_channel_average_views(self, channel_url):
-        """Calculate average views from the last 10 videos by visiting the channel page"""
+        """Calculate average views from the last 30 videos by visiting the channel page, excluding top and bottom 3 performing videos"""
         try:
             print(f"\nGetting average views from {channel_url}...")
             self.page.goto(channel_url + '/videos')
@@ -205,6 +205,13 @@ class ChannelStatsScraper(BaseScraper):
                 except Exception as e:
                     print(f"Error parsing view count: {e}")
                     continue
+            
+            if len(views) >= 7:  # Only exclude top/bottom 3 if we have at least 7 videos
+                # Sort views in ascending order
+                views.sort()
+                # Remove bottom 3 and top 3 performing videos
+                views = views[3:-3]
+                print(f"Excluded top and bottom 3 performing videos from average calculation")
             
             if views:
                 average = int(sum(views) / len(views))
