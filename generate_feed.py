@@ -1,12 +1,9 @@
-from flask import Flask, jsonify, send_file
-from flask_cors import CORS
 import sqlite3
 from datetime import datetime
 import os
 import math
-
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+import json
+from pathlib import Path
 
 def get_db():
     try:
@@ -14,7 +11,7 @@ def get_db():
         conn.row_factory = sqlite3.Row
         return conn
     except sqlite3.Error as e:
-        app.logger.error(f"Database connection error: {e}")
+        print(f"Database connection error: {e}")
         raise
 
 def check_db_initialized():
@@ -25,7 +22,6 @@ def check_db_initialized():
         db = get_db()
         cursor = db.cursor()
         
-        # Check if required tables exist
         cursor.execute("""
             SELECT name FROM sqlite_master 
             WHERE type='table' 
@@ -51,29 +47,28 @@ def get_thumbnail_url(video_id, thumbnail=None):
     """Get a valid thumbnail URL, falling back to YouTube's default if none provided."""
     if thumbnail and thumbnail.strip():
         return thumbnail
-    # Use YouTube's highest quality thumbnail
     return f'https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg'
 
-@app.route('/')
-def serve_app():
-    return send_file('index.html')
-
-@app.route('/api/videos')
 def get_videos():
     try:
-        # Check if database is properly initialized
         is_initialized, error_message = check_db_initialized()
         if not is_initialized:
-            return jsonify({
-                "error": "Database not initialized", 
-                "details": error_message
-            }), 500
+            print(f"Error: {error_message}")
+            return []
 
         db = get_db()
         cursor = db.cursor()
         
-        # Join videos with channels to get all necessary data
         cursor.execute('''
+            WITH ChannelStats AS (
+                SELECT 
+                    channel_id,
+                    AVG(views * 1.0 / c.subscriber_count) as avg_view_sub_ratio
+                FROM videos v
+                JOIN channels c ON v.channel_id = c.id
+                WHERE c.subscriber_count > 0
+                GROUP BY channel_id
+            )
             SELECT 
                 v.id,
                 v.title,
@@ -86,46 +81,48 @@ def get_videos():
                 c.is_verified,
                 c.thumbnail_url as channel_thumbnail,
                 c.average_views as channel_average_views,
+                cs.avg_view_sub_ratio,
                 CASE 
                     WHEN c.subscriber_count > 0 AND c.average_views > 0 THEN (
-                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 0.5 +  -- Performance vs channel average (50%)
-                        (v.views * 1.0 / NULLIF(c.subscriber_count, 0)) * 0.5 +  -- Reach relative to subscriber base (50%)
-                        -- Add non-linear scaling based on views-to-subscriber ratio
+                        -- Base performance relative to channel average (50-80% weight depending on view/sub ratio)
+                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 
+                        (0.5 + 0.3 * (1.0 - MIN(1.0, cs.avg_view_sub_ratio))) +
+                        
+                        -- Subscriber reach with adaptive weight (20-50% weight depending on view/sub ratio)
+                        (v.views * 1.0 / NULLIF(c.subscriber_count, 0)) * 
+                        (0.5 * MIN(1.0, cs.avg_view_sub_ratio)) +
+                        
+                        -- Non-linear bonus based on view-to-sub ratio relative to channel's typical ratio
                         CASE 
-                            WHEN v.views > c.subscriber_count THEN 
-                                LOG(2, (v.views * 1.0 / c.subscriber_count) + 1) * 0.8  -- Non-linear scaling that grows with viral factor
+                            WHEN (v.views * 1.0 / c.subscriber_count) > cs.avg_view_sub_ratio THEN 
+                                LOG(2, ((v.views * 1.0 / c.subscriber_count) / cs.avg_view_sub_ratio) + 1) * 0.8
                             ELSE 
-                                LOG(2, (v.views * 1.0 / c.subscriber_count) + 1) * 0.4  -- Smaller scaling for under-subscriber-count
+                                LOG(2, ((v.views * 1.0 / c.subscriber_count) / cs.avg_view_sub_ratio) + 1) * 0.4
                         END
                     )
                     ELSE 0 
                 END as performance_score
             FROM videos v
             JOIN channels c ON v.channel_id = c.id
+            JOIN ChannelStats cs ON v.channel_id = cs.channel_id
             ORDER BY performance_score DESC, v.published_date DESC
         ''')
         
-        # Fetch all rows before processing
         rows = cursor.fetchall()
-        
-        # Convert rows to list of dicts
         videos = []
+        
         for row in rows:
             video = dict(row)
-            # Ensure published_date is in ISO format
             if video['published_date']:
                 try:
-                    # Parse the date and convert to ISO format
                     date = datetime.fromisoformat(video['published_date'].replace('Z', '+00:00'))
                     video['published_date'] = date.isoformat()
                 except (ValueError, AttributeError) as e:
-                    app.logger.error(f"Invalid date format for video {video['id']}: {video['published_date']} - {str(e)}")
+                    print(f"Invalid date format for video {video['id']}: {video['published_date']} - {str(e)}")
                     continue
             
-            # Ensure we have a valid thumbnail URL
             video['thumbnail'] = get_thumbnail_url(video['id'], video['thumbnail'])
             
-            # Structure the channel data as a nested object
             subscriber_count = video.pop('subscriber_count')
             average_views = video.pop('channel_average_views')
             performance_score = video.pop('performance_score')
@@ -138,34 +135,45 @@ def get_videos():
             }
             video['performance_score'] = float(performance_score) if performance_score is not None else 0
             videos.append(video)
-            
-            # Log the first video's data for debugging
-            if len(videos) == 1:
-                app.logger.info(f"First video channel data: {video['channel']}")
-                app.logger.info(f"First video subscriber count: {video['channel']['subscriber_count']}")
-                app.logger.info(f"First video views: {video['views']}")
-                app.logger.info(f"First video average views: {video['channel']['average_views']}")
-                app.logger.info(f"First video performance score: {video['performance_score']}")
-        
-        app.logger.info(f"Found {len(videos)} videos")
-        if len(videos) > 0:
-            app.logger.info(f"Sample video: {videos[0]}")
-            app.logger.info(f"Sample channel data: {videos[0]['channel']}")
-            app.logger.info(f"Sample video views: {videos[0]['views']}")
-            app.logger.info(f"Sample channel average views: {videos[0]['channel']['average_views']}")
-            app.logger.info(f"Sample performance score: {videos[0]['performance_score']}")
-            app.logger.info(f"Date range: {videos[-1]['published_date']} to {videos[0]['published_date']}")
         
         db.close()
-        app.logger.info("Returning JSON response")
-        return jsonify(videos)
+        return videos
 
     except sqlite3.Error as e:
-        app.logger.error(f"Database error: {e}")
-        return jsonify({"error": "Database error", "details": str(e)}), 500
+        print(f"Database error: {e}")
+        return []
     except Exception as e:
-        app.logger.error(f"Server error: {e}")
-        return jsonify({"error": "Server error", "details": str(e)}), 500
+        print(f"Error: {e}")
+        return []
+
+def generate_html(videos):
+    # Read the template HTML file
+    template_path = Path(__file__).parent / 'static_template.html'
+    with open(template_path, 'r') as f:
+        template = f.read()
+    
+    # Insert the video data as a JSON array
+    video_data_json = json.dumps(videos)
+    html = template.replace('const videoData = VIDEO_DATA_PLACEHOLDER;', f'const videoData = {video_data_json};')
+    
+    # Write the generated HTML file
+    output_path = Path(__file__).parent / 'youtube_feed.html'
+    with open(output_path, 'w') as f:
+        f.write(html)
+    
+    # Get absolute file URL
+    file_url = f"file://{output_path.resolve()}"
+    
+    print(f"\nGenerated static HTML file at: {output_path}")
+    print(f"Found {len(videos)} videos")
+    if videos:
+        print(f"Date range: {videos[-1]['published_date']} to {videos[0]['published_date']}")
+    print(f"\nOpen in browser: \033[4m\033[34m{file_url}\033[0m")  # Underlined blue URL
+
+def main():
+    print("Generating static YouTube feed page...")
+    videos = get_videos()
+    generate_html(videos)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000) 
+    main() 

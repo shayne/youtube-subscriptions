@@ -1,66 +1,99 @@
 # YouTube subscriptions viewer
 
-A local web app that displays your YouTube subscription videos sorted by relative performance. Videos are ranked using a weighted scoring system that considers:
+A local web app that displays your YouTube subscription videos sorted by relative performance. The performance score is calculated using an adaptive algorithm that considers:
 
-- Video views relative to channel's average (50% weight)
-- Video views relative to subscriber count (50% weight)
-- Non-linear scaling factor based on views-to-subscriber ratio (logarithmic growth)
+1. Base performance relative to channel average (50-80% weight)
 
-This helps surface videos that are performing exceptionally well compared to their channel's typical metrics, rather than just showing videos in chronological order. The scoring system uses logarithmic scaling to handle viral videos, giving progressively higher bonuses as videos exceed the channel's subscriber count, while still maintaining meaningful differentiation between highly viral videos.
+   - Weight increases for channels with low view-to-subscriber ratios
+   - Helps identify standout videos even on channels that typically get fewer views
 
-## Features
+2. Subscriber reach (20-50% weight)
 
-- Alternative sorting based on video performance relative to channel metrics
-- Time-based filtering (1 day to 1 month)
-- Local database to track view count changes over time
-- Automated scraping of YouTube subscription feed
+   - Weight increases for channels with high view-to-subscriber ratios
+   - Adapts to each channel's typical performance pattern
+
+3. Viral bonus multiplier
+   - Non-linear logarithmic scaling when a video exceeds the channel's typical view-to-subscriber ratio
+   - Higher bonus (0.8x) for significantly overperforming videos
+   - Lower bonus (0.4x) for slightly overperforming videos
+
+This adaptive scoring system helps surface exceptional videos while accounting for different channel sizes and typical performance patterns. It's particularly good at identifying:
+
+- Breakout videos from smaller channels
+- Viral hits that exceed a channel's usual performance
+- Consistently high-performing videos from larger channels
+
+## Overview
+
+A tool to track YouTube subscriptions and surface high-performing videos. It consists of:
+
+1. A channel stats scraper that collects subscriber counts and average views
+2. A video scraper that collects new videos from subscribed channels
+3. A static page generator that creates a feed of videos sorted by performance
 
 ## Setup
 
-1. Create and activate a Python virtual environment:
+1. Requirements:
+
+   - Python 3.7+
+   - Google Chrome browser
+
+2. Create Python environment and install dependencies:
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-```
+# Create virtual environment
+python -m venv .venv
 
-2. Install dependencies:
+# Activate virtual environment
+source .venv/bin/activate
 
-```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Browser profile & authentication
-
-The app uses your system's installed Google Chrome browser and creates a persistent profile in the `chrome_profile/` directory. You'll need to log in to your Google account the first time you run a scraper, after which the session will be saved for future runs.
-
 ## Usage
 
-The app consists of two scrapers and a web server:
+### First-time setup
 
-### 1. Video scraper
-
-```bash
-python scrape_videos.py
-```
-
-This scrapes your YouTube subscriptions feed for recent videos, focusing on content from the last 30 days. Run this regularly to keep your video database updated. Each run will update existing video data rather than recreate it.
-
-### 2. Channel statistics scraper
+Run these commands in order:
 
 ```bash
-python scrape_channel_stats.py
+python scrape_channel_stats.py  # When Chrome opens, log in to YouTube
+python scrape_videos.py         # Collect recent videos
+python generate_feed.py         # Generate the feed
 ```
 
-This collects channel statistics (subscriber counts, average views, etc.). You only need to run this occasionally (e.g., weekly) to update channel metrics.
+Your YouTube login is saved in the `chrome_profile/` directory, so you'll only need to log in once. Subsequent runs will reuse this profile.
 
-### 3. Web server
+### Regular usage
+
+1. Collect video data:
 
 ```bash
-python server.py
+python scrape_videos.py  # Run daily to get new videos
 ```
 
-Starts the web server at http://localhost:5000
+2. Update channel statistics (subscriber counts, average views):
+
+```bash
+python scrape_channel_stats.py  # Run occasionally (e.g., monthly)
+```
+
+3. Generate the feed:
+
+```bash
+python generate_feed.py  # Creates youtube_feed.html
+```
+
+Open `youtube_feed.html` in your browser to view your subscription feed.
+
+## Development
+
+The project uses:
+
+- SQLite for data storage
+- Playwright for web scraping
+- Preact for the frontend (served statically)
 
 ## Makefile commands
 

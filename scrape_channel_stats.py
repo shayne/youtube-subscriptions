@@ -159,18 +159,29 @@ class ChannelStatsScraper(BaseScraper):
         """Calculate average views from the last 30 videos by visiting the channel page, excluding top and bottom 3 performing videos"""
         try:
             print(f"\nGetting average views from {channel_url}...")
-            # Only wait for network to be mostly idle, not completely idle
-            self.page.goto(channel_url + '/videos', wait_until='networkidle')
             
-            # Scroll faster with shorter waits
-            last_height = 0
-            for _ in range(2):  # Reduce to 2 scrolls since we're getting 30 videos anyway
-                self.page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)')
-                self.page.wait_for_timeout(500)  # Reduced from 1000ms to 500ms
-                new_height = self.page.evaluate('document.documentElement.scrollHeight')
-                if new_height == last_height:
-                    break
-                last_height = new_height
+            # Use commit instead of domcontentloaded - faster and still reliable
+            try:
+                self.page.goto(channel_url + '/videos', timeout=5000, wait_until='commit')
+            except Exception as e:
+                print(f"Initial page load timed out, but continuing anyway: {e}")
+            
+            # Wait for any video to appear
+            try:
+                self.page.wait_for_selector('ytd-rich-grid-media, ytd-grid-video-renderer', timeout=3000)
+            except Exception as e:
+                print(f"Warning: Video grid not found: {e}")
+                return 0  # Return early if no videos found
+            
+            # Quick double-scroll to load more videos
+            try:
+                self.page.evaluate('''() => {
+                    window.scrollTo(0, document.documentElement.scrollHeight / 2);
+                    setTimeout(() => window.scrollTo(0, document.documentElement.scrollHeight), 250);
+                }''')
+                self.page.wait_for_timeout(300)  # Brief wait for lazy loading
+            except Exception as e:
+                print(f"Warning: Scroll failed: {e}")
             
             # Extract video information using JavaScript - optimized to get all data in one pass
             videos_info = self.page.evaluate("""() => {
@@ -214,12 +225,12 @@ class ChannelStatsScraper(BaseScraper):
             # videos_info is now already an array of numbers, no need for parsing
             views = videos_info
             
-            if len(views) >= 7:  # Only exclude top/bottom 3 if we have at least 7 videos
-                # Sort views in ascending order
+            if len(views) >= 10:  # Only remove outliers if we have enough videos
                 views.sort()
-                # Remove bottom 3 and top 3 performing videos
-                views = views[3:-3]
-                print(f"Excluded top and bottom 3 performing videos from average calculation")
+                # Remove top and bottom 10% of videos, but at least 1 and at most 5 from each end
+                trim_count = max(1, min(5, len(views) // 10))
+                views = views[trim_count:-trim_count]
+                print(f"Excluded top and bottom {trim_count} videos from average calculation")
             
             if views:
                 average = int(sum(views) / len(views))

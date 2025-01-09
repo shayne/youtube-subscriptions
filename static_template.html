@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>YouTube Subscriptions Viewer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="icon"
+      type="image/png"
+      href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAGASURBVFhH7ZY9TsNAEIX3HKG5QU6QG1B7A27gNDQcICdwQ0GDhEQBDT9NaOBn7QmQ6Gio6Gio6NLg5nvOeNkkG2yiJWKkfdLKO7Oe93bGa1szN5EyP5YyieSL9K3xH0/yQR4XRTFrjbksH+Wp3JN78kqO5L18lSPrv5BH8lBuy115LR/ks/yQgfWN5aE8kDtyW17KkXyS7/JDBtaXyb6tkXtD7slrGckX+SEH1pfJvq2Re0Pu0bqR7MzR+jLZtzVyb8g9WjeSvVm1vkz2bY3cG3KP1o1kb9asL5N9WyP3htyjdSPZm3Xry2Tf1si9Ifdo3Uj2ZsP6Mtm3NXJvyD1aN5K9aVpfJvu2Ru4NuUfrRrI3W9aXyb6tkXtD7tG6kezNtvVlsm9r5N6Qe7RuJHvTsr5M9m2N3Btyj9SNZG92rC+TfVsj94bco3Uj2Ztd68tk39bIvSH3aN1I9mbP+jLZtzVyb8g9WjeSvdm3vkz2bY3cm3/2htyj9f+ELPsC/+NwIiUl5xQAAAAASUVORK5CYII="
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap"
+    />
+    <style>
+      body {
+        margin: 0;
+        font-family: "Roboto", sans-serif;
+        background-color: #0f0f0f;
+        color: #fff;
+      }
+      .video-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        padding: 20px;
+      }
+      .video-card {
+        background-color: #1f1f1f;
+        border-radius: 12px;
+        overflow: hidden;
+        transition: transform 0.2s;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+      }
+      .video-card:hover {
+        transform: translateY(-2px);
+      }
+      .video-thumbnail {
+        width: 100%;
+        aspect-ratio: 16/9;
+        object-fit: cover;
+        position: relative;
+      }
+      .video-info {
+        padding: 12px;
+      }
+      .video-title {
+        font-size: 1rem;
+        font-weight: 500;
+        margin-bottom: 8px;
+      }
+      .channel-name {
+        font-size: 0.9rem;
+        color: #aaa;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .verified-badge {
+        color: #aaa;
+        font-size: 14px;
+      }
+      .video-stats {
+        font-size: 0.9rem;
+        color: #aaa;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .popularity-score {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background-color: rgba(0, 0, 0, 0.8);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #fff;
+      }
+      .toolbar {
+        background-color: #1f1f1f;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      .time-filter {
+        background-color: #303030;
+        color: #fff;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      .time-filter:hover {
+        background-color: #404040;
+      }
+      .time-filter.active {
+        background-color: #fff;
+        color: #0f0f0f;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script type="module">
+      // Import standalone bundle for Preact and HTM
+      import {
+        html,
+        render,
+        useEffect,
+        useState,
+        useMemo,
+      } from "https://unpkg.com/htm/preact/standalone.module.js";
+
+      // Import signals separately
+      import {
+        signal,
+        computed,
+        effect,
+      } from "https://esm.sh/@preact/signals-core";
+
+      const timeRanges = {
+        day: { label: "Past day", days: 1 },
+        week: { label: "Last week", days: 7 },
+        twoweeks: { label: "Last 2 weeks", days: 14 },
+        month: { label: "Last month", days: 30 },
+      };
+
+      // Initialize with embedded data
+      const videoData = VIDEO_DATA_PLACEHOLDER; // This will be replaced by generate.py
+      const videos = signal(videoData);
+      const selectedTimeRange = signal("week");
+
+      const filteredVideos = computed(() => {
+        const now = new Date();
+        const cutoffDays = timeRanges[selectedTimeRange.value].days;
+        const currentVideos = videos.value;
+
+        const filtered = currentVideos
+          .filter((video) => {
+            if (!video.published_date) return false;
+            try {
+              const videoDate = new Date(video.published_date);
+              if (isNaN(videoDate.getTime())) return false;
+              const ageInDays = (now - videoDate) / (1000 * 60 * 60 * 24);
+              return ageInDays <= cutoffDays;
+            } catch (e) {
+              return false;
+            }
+          })
+          .sort((a, b) => b.performance_score - a.performance_score);
+
+        return filtered;
+      });
+
+      function formatNumber(num) {
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+        if (num >= 1000) return Math.round(num / 1000) + "K";
+        return num.toString();
+      }
+
+      function formatDate(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = (now - date) / 1000; // seconds
+
+        if (diff < 3600) return Math.floor(diff / 60) + " minutes ago";
+        if (diff < 86400) return Math.floor(diff / 3600) + " hours ago";
+        if (diff < 604800) return Math.floor(diff / 86400) + " days ago";
+        if (diff < 2592000) return Math.floor(diff / 604800) + " weeks ago";
+        return Math.floor(diff / 2592000) + " months ago";
+      }
+
+      function formatPerformance(score) {
+        return `${Math.round(score * 100)}%`;
+      }
+
+      function App() {
+        const [_, setUpdate] = useState(0); // Force re-render when signals change
+
+        // Subscribe to signal changes
+        useEffect(() => {
+          const dispose = effect(() => {
+            selectedTimeRange.value; // Subscribe to changes
+            setUpdate((n) => n + 1); // Force re-render
+          });
+          return () => dispose();
+        }, []);
+
+        return html`
+          <div>
+            <div class="toolbar">
+              ${Object.entries(timeRanges).map(
+                ([key, { label }]) => html`
+                  <button
+                    class="time-filter ${selectedTimeRange.value === key
+                      ? "active"
+                      : ""}"
+                    onClick=${() => (selectedTimeRange.value = key)}
+                  >
+                    ${label}
+                  </button>
+                `
+              )}
+            </div>
+            <div class="video-grid">
+              ${filteredVideos.value.map(
+                (video) => html`
+                  <a
+                    href=${video.url}
+                    target="_blank"
+                    rel="noopener"
+                    class="video-card"
+                  >
+                    <div style="position: relative;">
+                      <img
+                        class="video-thumbnail"
+                        src=${video.thumbnail}
+                        alt=${video.title}
+                      />
+                      <div
+                        class="popularity-score"
+                        style="background-color: ${video.performance_score >= 1
+                          ? "#22c55e"
+                          : "#ef4444"}"
+                      >
+                        ${formatPerformance(video.performance_score)}
+                      </div>
+                    </div>
+                    <div class="video-info">
+                      <div class="video-title">${video.title}</div>
+                      <div class="channel-name">
+                        ${video.channel.name}
+                        ${video.channel.is_verified &&
+                        html`<span class="verified-badge">✓</span>`}
+                      </div>
+                      <div class="video-stats">
+                        <span>${formatNumber(video.views)} views</span>
+                        <span>•</span>
+                        <span>${formatDate(video.published_date)}</span>
+                      </div>
+                    </div>
+                  </a>
+                `
+              )}
+            </div>
+          </div>
+        `;
+      }
+
+      render(html`<${App} />`, document.getElementById("app"));
+    </script>
+  </body>
+</html>

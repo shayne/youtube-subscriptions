@@ -24,3 +24,6 @@ playwright-log.txt
 *.swp
 *.swo
 .DS_Store
+
+# The static feed
+youtube_feed.html

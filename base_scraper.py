@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 import atexit
+import signal
 
 class BaseScraper:
     def __init__(self):
@@ -127,42 +128,67 @@ class BaseScraper:
                 print("Scroll retry failed, continuing anyway...")
 
     def cleanup(self):
-        """Close the browser but keep the profile directory"""
+        """Clean up resources"""
         print("\nCleaning up...")
         try:
-            if self.page:
-                self.page.close()
-                self.page = None
-            if self.browser:
-                self.browser.close()
-                self.browser = None
-            if self.playwright:
-                self.playwright.stop()
-                self.playwright = None
-        except Exception as e:
-            print(f"Error during cleanup: {e}")
+            # Set a very short timeout for closing operations
+            if hasattr(self, 'page') and self.page:
+                try:
+                    self.page.close(timeout=1000)
+                except:
+                    pass
+            
+            if hasattr(self, 'context') and self.context:
+                try:
+                    self.context.close(timeout=1000)
+                except:
+                    pass
+                
+            if hasattr(self, 'browser') and self.browser:
+                try:
+                    self.browser.close(timeout=1000)
+                except:
+                    pass
+                    
+            if hasattr(self, 'playwright') and self.playwright:
+                try:
+                    self.playwright.stop()
+                except:
+                    pass
+        except:
+            # If anything fails, try to force kill browser
+            import psutil
+            import os
+            try:
+                current_process = psutil.Process(os.getpid())
+                children = current_process.children(recursive=True)
+                for child in children:
+                    try:
+                        child.kill()
+                    except:
+                        pass
+            except:
+                pass
+        print("Cleanup complete")
 
     def run(self):
-        """Main execution method"""
+        """Run the scraper with proper setup and cleanup"""
+        def handle_interrupt(signum, frame):
+            print("\nInterrupt received, cleaning up...")
+            self.cleanup()
+            import sys
+            sys.exit(0)
+            
+        # Set up interrupt handler
+        signal.signal(signal.SIGINT, handle_interrupt)
+        
         try:
-            print("\n=== Starting YouTube Scraper ===")
-            
-            self.setup_browser()
-            self.wait_for_page_load()
-            
-            # Keep trying until successfully logged in or user quits
-            while not self.check_login():
-                print("\nLogin failed. Press Enter to try again or Ctrl+C to quit...")
-                input()
-            
+            self.setup()
             self.scrape()
-            
         except KeyboardInterrupt:
-            print("\nScript interrupted by user")
+            print("\nInterrupt received, cleaning up...")
         except Exception as e:
-            print(f"\nAn error occurred: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"\nError during scraping: {e}")
         finally:
             self.cleanup()
 
