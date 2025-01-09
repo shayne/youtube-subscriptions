@@ -3,6 +3,7 @@ from flask_cors import CORS
 import sqlite3
 from datetime import datetime
 import os
+import math
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -87,8 +88,15 @@ def get_videos():
                 c.average_views as channel_average_views,
                 CASE 
                     WHEN c.subscriber_count > 0 AND c.average_views > 0 THEN (
-                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 0.6 +  -- Performance vs channel average (60%)
-                        (v.views * 1.0 / NULLIF(c.subscriber_count, 0)) * 0.4   -- Reach relative to subscriber base (40%)
+                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 0.5 +  -- Performance vs channel average (50%)
+                        (v.views * 1.0 / NULLIF(c.subscriber_count, 0)) * 0.5 +  -- Reach relative to subscriber base (50%)
+                        -- Add non-linear scaling based on views-to-subscriber ratio
+                        CASE 
+                            WHEN v.views > c.subscriber_count THEN 
+                                LOG(2, (v.views * 1.0 / c.subscriber_count) + 1) * 0.8  -- Non-linear scaling that grows with viral factor
+                            ELSE 
+                                LOG(2, (v.views * 1.0 / c.subscriber_count) + 1) * 0.4  -- Smaller scaling for under-subscriber-count
+                        END
                     )
                     ELSE 0 
                 END as performance_score

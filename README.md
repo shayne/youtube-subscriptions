@@ -2,10 +2,11 @@
 
 A local web app that displays your YouTube subscription videos sorted by relative performance. Videos are ranked using a weighted scoring system that considers:
 
-- Video views relative to channel's average (60% weight)
-- Video views relative to subscriber count (40% weight)
+- Video views relative to channel's average (50% weight)
+- Video views relative to subscriber count (50% weight)
+- Non-linear scaling factor based on views-to-subscriber ratio (logarithmic growth)
 
-This helps surface videos that are performing exceptionally well compared to their channel's typical metrics, rather than just showing videos in chronological order.
+This helps surface videos that are performing exceptionally well compared to their channel's typical metrics, rather than just showing videos in chronological order. The scoring system uses logarithmic scaling to handle viral videos, giving progressively higher bonuses as videos exceed the channel's subscriber count, while still maintaining meaningful differentiation between highly viral videos.
 
 ## Features
 
