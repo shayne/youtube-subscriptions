@@ -85,22 +85,18 @@ def get_videos():
                 cs.avg_view_sub_ratio,
                 CASE 
                     WHEN c.subscriber_count > 0 AND c.average_views > 0 THEN (
-                        -- Base performance relative to channel average (50-80% weight depending on view/sub ratio)
-                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 
-                        (0.5 + 0.3 * (1.0 - MIN(1.0, cs.avg_view_sub_ratio))) +
+                        -- Base performance relative to channel average (50% weight)
+                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 0.5 +
                         
-                        -- Subscriber reach with adaptive weight (20-50% weight depending on view/sub ratio)
-                        (v.views * 1.0 / NULLIF(c.subscriber_count, 0)) * 
-                        (0.5 * MIN(1.0, cs.avg_view_sub_ratio)) +
-                        
-                        -- Non-linear bonus based on view-to-sub ratio relative to channel's typical ratio
+                        -- Subscriber reach bonus (only positive, no penalty)
                         CASE 
-                            WHEN (v.views * 1.0 / c.subscriber_count) > cs.avg_view_sub_ratio THEN 
-                                LOG(2, ((v.views * 1.0 / c.subscriber_count) / cs.avg_view_sub_ratio) + 1) * 0.8
-                            ELSE 
-                                LOG(2, ((v.views * 1.0 / c.subscriber_count) / cs.avg_view_sub_ratio) + 1) * 0.4
+                            WHEN (v.views * 1.0 / c.subscriber_count) > 1.0 THEN 
+                                POWER((v.views * 1.0 / c.subscriber_count), 1.2) * 0.5
+                            ELSE 0
                         END
-                    )
+                    ) * 
+                    -- Absolute views multiplier (non-linear scaling)
+                    (1.0 + POWER(POWER(v.views * 1.0, 0.5) / 1000000, 0.4))
                     ELSE 0 
                 END as performance_score
             FROM videos v

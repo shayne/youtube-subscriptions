@@ -1,27 +1,29 @@
 # YouTube subscriptions viewer
 
-A local web app that displays your YouTube subscription videos sorted by relative performance. The performance score is calculated using an adaptive algorithm that considers:
+A local web app that displays your YouTube subscription videos sorted by relative performance. The performance score is calculated using an algorithm that considers:
 
-1. Base performance relative to channel average (50-80% weight)
+1. Base performance relative to channel average (50% weight)
 
-   - Weight increases for channels with low view-to-subscriber ratios
-   - Helps identify standout videos even on channels that typically get fewer views
+   - How well a video performs compared to the channel's typical view count
+   - Helps identify standout videos within each channel's context
 
-2. Subscriber reach (20-50% weight)
+2. Subscriber reach bonus (50% weight, only applied when positive)
 
-   - Weight increases for channels with high view-to-subscriber ratios
-   - Adapts to each channel's typical performance pattern
+   - Only kicks in when a video's views exceed the channel's subscriber count
+   - No penalty for videos with fewer views than subscribers
+   - Calculated as (views/subscribers)^1.2 to reward exceptional performance
 
-3. Viral bonus multiplier
-   - Non-linear logarithmic scaling when a video exceeds the channel's typical view-to-subscriber ratio
-   - Higher bonus (0.8x) for significantly overperforming videos
-   - Lower bonus (0.4x) for slightly overperforming videos
+3. Absolute views multiplier
+   - Non-linear scaling based on total view count
+   - Calculated as (1.0 + (views^0.5 / 1000000)^0.4)
+   - Gives additional weight to videos with high absolute view counts
 
-This adaptive scoring system helps surface exceptional videos while accounting for different channel sizes and typical performance patterns. It's particularly good at identifying:
+This scoring system helps surface exceptional videos while:
 
-- Breakout videos from smaller channels
-- Viral hits that exceed a channel's usual performance
-- Consistently high-performing videos from larger channels
+- Identifying breakout videos that exceed subscriber counts
+- Not penalizing channels with legacy subscriber bases
+- Rewarding videos that outperform their channel's average
+- Giving extra weight to videos with high absolute view counts
 
 ## Overview
 
