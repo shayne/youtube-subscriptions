@@ -418,4 +418,17 @@ class VideoScraper(BaseScraper):
 
 if __name__ == "__main__":
     scraper = VideoScraper()
-    scraper.run() 
+    scraper.run()  # Use run() instead of scrape() to ensure proper setup
+    
+    # Check if we have channel data and generate feed if we do
+    db = scraper.db
+    cursor = db.db.cursor()
+    cursor.execute('SELECT COUNT(*) FROM channels WHERE subscriber_count > 0')
+    channel_count = cursor.fetchone()[0]
+    
+    if channel_count > 0:
+        print("\nChannel data found - generating feed...")
+        from generate_feed import main as generate_feed
+        generate_feed()
+    else:
+        print("\nNo channel data found. Run scrape_channel_stats.py to collect channel data.") 

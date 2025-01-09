@@ -4,6 +4,7 @@ import os
 import math
 import json
 from pathlib import Path
+import webbrowser
 
 def get_db():
     try:
@@ -168,7 +169,10 @@ def generate_html(videos):
     print(f"Found {len(videos)} videos")
     if videos:
         print(f"Date range: {videos[-1]['published_date']} to {videos[0]['published_date']}")
-    print(f"\nOpen in browser: \033[4m\033[34m{file_url}\033[0m")  # Underlined blue URL
+    print(f"\nOpening in default browser...")
+    
+    # Open the file in the default browser
+    webbrowser.open(file_url)
 
 def main():
     print("Generating static YouTube feed page...")
