@@ -104,11 +104,20 @@ class BaseScraper:
             # First verify the page is still in a good state
             self.page.wait_for_load_state('networkidle', timeout=5000)
             
-            # Scroll to bottom
-            self.page.evaluate('''() => {
-                window.scrollTo(0, document.documentElement.scrollHeight);
-                return document.documentElement.scrollHeight;
-            }''')
+            # First scroll attempt
+            try:
+                self.page.evaluate('''() => {
+                    window.scrollTo(0, document.documentElement.scrollHeight);
+                    return document.documentElement.scrollHeight;
+                }''')
+            except Exception as e:
+                print(f"First scroll attempt failed ({str(e)}), trying again...")
+                self.wait_for_page_load(2)
+                # Second scroll attempt
+                self.page.evaluate('''() => {
+                    window.scrollTo(0, document.documentElement.scrollHeight);
+                    return document.documentElement.scrollHeight;
+                }''')
             
             # Wait for new content
             self.wait_for_page_load(2)
@@ -117,15 +126,8 @@ class BaseScraper:
             self.page.wait_for_selector('#contents', timeout=5000)
             
         except Exception as e:
-            print(f"Warning: Scroll failed, retrying... ({str(e)})")
-            # Give the page a moment to recover
-            self.wait_for_page_load(3)
-            try:
-                # Try one more time with a smaller scroll
-                self.page.evaluate('window.scrollBy(0, window.innerHeight)')
-                self.wait_for_page_load(2)
-            except:
-                print("Scroll retry failed, continuing anyway...")
+            print(f"Warning: Both scroll attempts failed ({str(e)})")
+            self.wait_for_page_load(2)
 
     def cleanup(self):
         """Clean up resources"""
