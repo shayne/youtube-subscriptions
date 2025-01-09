@@ -127,64 +127,6 @@ class YouTubeDB:
             print(f"Error updating video: {e}")
             self.db.rollback()
 
-    def get_videos_with_performance(self):
-        """Get videos with performance metrics for reporting"""
-        cursor = self.db.cursor()
-        
-        cursor.execute('''
-            WITH ChannelStats AS (
-                SELECT 
-                    channel_id,
-                    AVG(views) as avg_views,
-                    MAX(views) as max_views
-                FROM videos
-                WHERE published_date >= datetime('now', '-30 days')
-                GROUP BY channel_id
-            )
-            SELECT 
-                v.*, 
-                c.name as channel_name, 
-                c.url as channel_url,
-                c.subscriber_count,
-                cs.avg_views as channel_avg_views,
-                cs.max_views as channel_max_views,
-                CASE 
-                    WHEN c.subscriber_count > 0 THEN (
-                        (v.views * 1.0 / c.subscriber_count) * 0.4 +
-                        (v.views * 1.0 / NULLIF(cs.avg_views, 0)) * 0.4 +
-                        (v.views * 1.0 / NULLIF(cs.max_views, 0)) * 0.2
-                    )
-                    ELSE 0 
-                END as performance_score
-            FROM videos v
-            JOIN channels c ON v.channel_id = c.id
-            LEFT JOIN ChannelStats cs ON v.channel_id = cs.channel_id
-            WHERE v.published_date >= datetime('now', '-30 days')
-            ORDER BY performance_score DESC
-        ''')
-        
-        return cursor.fetchall()
-
-    def get_channel_stats(self):
-        """Get channel statistics for reporting"""
-        cursor = self.db.cursor()
-        
-        cursor.execute('''
-            SELECT 
-                c.name,
-                c.subscriber_count,
-                AVG(v.views) as avg_views,
-                MAX(v.views) as max_views,
-                COUNT(v.id) as video_count
-            FROM channels c
-            LEFT JOIN videos v ON c.id = v.channel_id
-            WHERE v.published_date >= datetime('now', '-30 days')
-            GROUP BY c.id
-            ORDER BY avg_views DESC
-        ''')
-        
-        return cursor.fetchall()
-
     def close(self):
         """Close the database connection"""
         if self.db:
