@@ -17,7 +17,7 @@ class BaseScraper:
         # Register cleanup on exit
         atexit.register(self.cleanup)
 
-    def setup_browser(self):
+    def setup(self):
         """Initialize browser with a persistent Chrome profile"""
         # Create profile directory if it doesn't exist
         self.chrome_profile_dir.mkdir(exist_ok=True)
