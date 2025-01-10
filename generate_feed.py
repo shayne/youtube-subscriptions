@@ -98,7 +98,11 @@ def get_videos():
                     -- Absolute views multiplier (non-linear scaling)
                     (1.0 + POWER(POWER(v.views * 1.0, 0.5) / 1000000, 0.4))
                     ELSE 0 
-                END as performance_score
+                END as performance_score,
+                -- Individual score components
+                CASE WHEN c.average_views > 0 THEN (v.views * 1.0 / NULLIF(c.average_views, 0)) ELSE 0 END as relative_performance,
+                CASE WHEN c.subscriber_count > 0 THEN (v.views * 1.0 / c.subscriber_count) ELSE 0 END as subscriber_reach,
+                CASE WHEN v.views > 0 THEN (1.0 + POWER(POWER(v.views * 1.0, 0.5) / 1000000, 0.4)) ELSE 1 END as absolute_views_multiplier
             FROM videos v
             JOIN channels c ON v.channel_id = c.id
             JOIN ChannelStats cs ON v.channel_id = cs.channel_id
@@ -131,6 +135,11 @@ def get_videos():
                 'average_views': int(average_views) if average_views is not None else None
             }
             video['performance_score'] = float(performance_score) if performance_score is not None else 0
+            video['performance_details'] = {
+                'relative_performance': float(row['relative_performance']) if row['relative_performance'] is not None else 0,
+                'subscriber_reach': float(row['subscriber_reach']) if row['subscriber_reach'] is not None else 0,
+                'absolute_views_multiplier': float(row['absolute_views_multiplier']) if row['absolute_views_multiplier'] is not None else 1
+            }
             videos.append(video)
         
         db.close()

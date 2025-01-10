@@ -81,6 +81,45 @@
         font-size: 0.85rem;
         font-weight: 500;
         color: #fff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .info-icon {
+        opacity: 0.7;
+        font-size: 14px;
+      }
+      .performance-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        background-color: rgba(0, 0, 0, 0.95);
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: #fff;
+        width: 280px;
+        z-index: 2;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s, visibility 0.2s;
+      }
+      .popularity-score:hover .performance-popover {
+        opacity: 1;
+        visibility: visible;
+      }
+      .performance-stat {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .performance-stat:last-child {
+        margin-bottom: 0;
+      }
+      .performance-label {
+        color: #aaa;
       }
       .toolbar {
         background-color: #1f1f1f;
@@ -252,8 +291,42 @@
                         style="background-color: ${getPerformanceColor(
                           video.performance_score
                         )}"
+                        onClick=${(e) => e.preventDefault()}
                       >
                         ${formatPerformance(video.performance_score)}
+                        <span class="info-icon">ⓘ</span>
+                        <div class="performance-popover">
+                          <div class="performance-stat">
+                            <span class="performance-label"
+                              >Channel Performance:</span
+                            >
+                            <span
+                              >${formatPerformance(
+                                video.performance_details.relative_performance
+                              )}</span
+                            >
+                          </div>
+                          <div class="performance-stat">
+                            <span class="performance-label"
+                              >Subscriber Reach:</span
+                            >
+                            <span
+                              >${formatPerformance(
+                                video.performance_details.subscriber_reach
+                              )}</span
+                            >
+                          </div>
+                          <div class="performance-stat">
+                            <span class="performance-label"
+                              >Views Multiplier:</span
+                            >
+                            <span
+                              >${video.performance_details.absolute_views_multiplier.toFixed(
+                                2
+                              )}x</span
+                            >
+                          </div>
+                        </div>
                       </div>
                     </div>
                     <div class="video-info">
