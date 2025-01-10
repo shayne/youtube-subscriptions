@@ -85,8 +85,8 @@ def get_videos():
                 cs.avg_view_sub_ratio,
                 CASE 
                     WHEN c.subscriber_count > 0 AND c.average_views > 0 THEN (
-                        -- Base performance relative to channel average (50% weight)
-                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 0.5 +
+                        -- Base performance relative to channel average (75% weight)
+                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 0.75 +
                         
                         -- Subscriber reach bonus (only positive, no penalty)
                         CASE 

@@ -2,10 +2,11 @@
 
 A local web app that displays your YouTube subscription videos sorted by relative performance. The performance score is calculated using an algorithm that considers:
 
-1. Base performance relative to channel average (50% weight)
+1. Base performance relative to channel average (75% weight)
 
    - How well a video performs compared to the channel's typical view count
    - Helps identify standout videos within each channel's context
+   - Average performing videos will score around 75%
 
 2. Subscriber reach bonus (50% weight, only applied when positive)
 
