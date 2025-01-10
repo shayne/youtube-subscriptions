@@ -8,16 +8,13 @@ init:
 firstrun:
     python3 scrape_channel_stats.py
     python3 scrape_videos.py
-    python3 generate_feed.py
 
 daily:
     python3 scrape_videos.py
-    python generate_feed.py
 
 refreshfull:
     python3 scrape_channel_stats.py
     python3 scrape_videos.py
-    python3 generate_feed.py
 
 generate:
     python3 generate_feed.py
