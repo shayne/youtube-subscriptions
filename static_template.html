@@ -131,7 +131,7 @@
       } from "https://esm.sh/@preact/signals-core";
 
       const timeRanges = {
-        day: { label: "Past day", days: 1 },
+        day: { label: "Last 2 days", days: 2 },
         week: { label: "Last week", days: 7 },
         twoweeks: { label: "Last 2 weeks", days: 14 },
         month: { label: "Last month", days: 30 },
@@ -140,7 +140,7 @@
       // Initialize with embedded data
       const videoData = VIDEO_DATA_PLACEHOLDER; // This will be replaced by generate.py
       const videos = signal(videoData);
-      const selectedTimeRange = signal("week");
+      const selectedTimeRange = signal("day");
 
       const filteredVideos = computed(() => {
         const now = new Date();
