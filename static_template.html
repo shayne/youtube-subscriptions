@@ -186,6 +186,24 @@
         return `${Math.round(score * 100)}%`;
       }
 
+      function getPerformanceColor(score) {
+        // Convert score to percentage (0-100)
+        const percentage = Math.min(Math.max(score * 100, 0), 100);
+
+        // Red component: starts at 239 (ef) and decreases to 34 (22)
+        const r = Math.round(239 - (percentage * (239 - 34)) / 100);
+
+        // Green component: starts at 68 (44) and increases to 197 (c5)
+        const g = Math.round(68 + (percentage * (197 - 68)) / 100);
+
+        // Blue component: stays at 68 (44) for red and 94 (5e) for green
+        const b = Math.round(68 + (percentage * (94 - 68)) / 100);
+
+        return `#${r.toString(16).padStart(2, "0")}${g
+          .toString(16)
+          .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+      }
+
       function App() {
         const [_, setUpdate] = useState(0); // Force re-render when signals change
 
@@ -231,9 +249,9 @@
                       />
                       <div
                         class="popularity-score"
-                        style="background-color: ${video.performance_score >= 1
-                          ? "#22c55e"
-                          : "#ef4444"}"
+                        style="background-color: ${getPerformanceColor(
+                          video.performance_score
+                        )}"
                       >
                         ${formatPerformance(video.performance_score)}
                       </div>
