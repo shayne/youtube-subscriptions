@@ -48,7 +48,7 @@ class BaseScraper:
             self.wait_for_page_load(2)
             
             # Look for sign-in button which indicates we're not logged in
-            sign_in_button = self.page.query_selector('a[aria-label="Sign in"]')
+            sign_in_button = self.page.query_selector('a[aria-label="Sign in"], ytd-button-renderer:has-text("Sign in")')
             if sign_in_button:
                 print("Found sign-in button - not logged in")
                 return False
@@ -59,14 +59,20 @@ class BaseScraper:
             self.wait_for_page_load(2)
             
             # Check if we got redirected to login page
-            if 'accounts.google.com' in self.page.url:
+            if 'accounts.google.com' in self.page.url or 'signin' in self.page.url:
                 print("Redirected to login page - not logged in")
                 return False
             
             # Check if we can see subscription content
-            feed = self.page.query_selector('#contents')
+            feed = self.page.query_selector('#contents ytd-rich-item-renderer, #contents ytd-grid-video-renderer')
             if not feed:
                 print("No subscription feed found - not logged in")
+                return False
+            
+            # Check for sign-in promo
+            sign_in_promo = self.page.query_selector('ytd-guide-signin-promo-renderer')
+            if sign_in_promo:
+                print("Found sign-in promo - not logged in")
                 return False
             
             print("Successfully verified login!")
@@ -186,6 +192,10 @@ class BaseScraper:
         
         try:
             self.setup()
+            # Check login status before scraping
+            if not self.check_login():
+                print("\nFailed to verify login after multiple attempts. Please try again.")
+                return
             self.scrape()
         except KeyboardInterrupt:
             print("\nInterrupt received, cleaning up...")
