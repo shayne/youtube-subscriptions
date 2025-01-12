@@ -14,6 +14,7 @@ class BaseScraper:
         self.page = None
         self.chrome_profile_dir = Path("chrome_profile")
         self.playwright = None
+        self.headless = True  # Start in headless mode by default
         # Register cleanup on exit
         atexit.register(self.cleanup)
 
@@ -24,10 +25,17 @@ class BaseScraper:
         print(f"Using Chrome profile at: {self.chrome_profile_dir.absolute()}")
 
         self.playwright = sync_playwright().start()
+        self._launch_browser()
+
+    def _launch_browser(self):
+        """Launch browser with current headless setting"""
+        if self.browser:
+            self.browser.close()
+            
         self.browser = self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.chrome_profile_dir),
             channel="chrome",  # Use installed Chrome instead of Chromium
-            headless=False,
+            headless=self.headless,
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
@@ -38,7 +46,7 @@ class BaseScraper:
             ]
         )
         self.page = self.browser.new_page()
-    
+
     def is_logged_in(self):
         """Check if we're already logged into YouTube"""
         try:
@@ -87,6 +95,16 @@ class BaseScraper:
         if self.is_logged_in():
             return True
             
+        # If we're headless, switch to non-headless for login
+        if self.headless:
+            print("\nNot logged in. Switching to non-headless mode for login...")
+            self.headless = False
+            self._launch_browser()
+            
+            # Check login again in case credentials were cached
+            if self.is_logged_in():
+                return True
+
         print("\nPlease log in to YouTube in the browser window.")
         print("After logging in, press Enter to continue...")
         input()
@@ -94,6 +112,11 @@ class BaseScraper:
         # Verify login was successful
         for _ in range(3):  # Try up to 3 times
             if self.is_logged_in():
+                # Switch back to headless if login successful
+                if not self.headless:
+                    print("\nLogin successful. Switching back to headless mode...")
+                    self.headless = True
+                    self._launch_browser()
                 return True
             print("Login verification failed, waiting a bit longer...")
             self.wait_for_page_load(2)
