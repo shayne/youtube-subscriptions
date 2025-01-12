@@ -2,10 +2,11 @@ from base_scraper import BaseScraper
 from db_schema import YouTubeDB
 import re
 import json
+import argparse
 
 class ChannelStatsScraper(BaseScraper):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, debug=False):
+        super().__init__(debug)
         self.db = YouTubeDB()
 
     def parse_subscriber_count(self, count_text):
@@ -353,5 +354,9 @@ class ChannelStatsScraper(BaseScraper):
         print(f"\nFinished updating {updated_count} channel statistics!")
 
 if __name__ == "__main__":
-    scraper = ChannelStatsScraper()
+    parser = argparse.ArgumentParser(description='Scrape YouTube channel statistics')
+    parser.add_argument('--debug', action='store_true', help='Run in non-headless mode')
+    args = parser.parse_args()
+    
+    scraper = ChannelStatsScraper(debug=args.debug)
     scraper.run() 

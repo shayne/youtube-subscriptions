@@ -8,13 +8,13 @@ import atexit
 import signal
 
 class BaseScraper:
-    def __init__(self):
+    def __init__(self, debug=False):
         self.browser = None
         self.context = None
         self.page = None
         self.chrome_profile_dir = Path("chrome_profile")
         self.playwright = None
-        self.headless = True  # Start in headless mode by default
+        self.headless = not debug  # Start in non-headless mode if debug=True
         # Register cleanup on exit
         atexit.register(self.cleanup)
 

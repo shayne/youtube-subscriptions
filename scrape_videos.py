@@ -2,10 +2,11 @@ from base_scraper import BaseScraper
 from db_schema import YouTubeDB
 from datetime import datetime, timedelta
 import re
+import argparse
 
 class VideoScraper(BaseScraper):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, debug=False):
+        super().__init__(debug)
         self.db = YouTubeDB()
         self.videos = []
 
@@ -417,7 +418,11 @@ class VideoScraper(BaseScraper):
             return []
 
 if __name__ == "__main__":
-    scraper = VideoScraper()
+    parser = argparse.ArgumentParser(description='Scrape YouTube subscription videos')
+    parser.add_argument('--debug', action='store_true', help='Run in non-headless mode')
+    args = parser.parse_args()
+    
+    scraper = VideoScraper(debug=args.debug)
     scraper.run()  # Use run() instead of scrape() to ensure proper setup
     
     # Check if we have channel data and generate feed if we do
