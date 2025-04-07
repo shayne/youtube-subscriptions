@@ -1,0 +1,9 @@
+[project]
+name = "youtube-subscriptions"
+version = "0.1.0"
+description = "A tool for tracking YouTube subscriptions that displays videos sorted by performance score. Features channel stats and video scrapers using Playwright, stores data in SQLite, and generates a static Preact-based viewer."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.51.0",
+]
