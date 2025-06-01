@@ -159,6 +159,11 @@ class VideoScraper(BaseScraper):
                         const metadata = element.querySelector('#metadata-line');
                         const thumbnail = element.querySelector('yt-image img');
                         
+                        // Extract duration from thumbnail overlay
+                        const durationEl = element.querySelector('ytd-thumbnail-overlay-time-status-renderer span.style-scope.ytd-thumbnail-overlay-time-status-renderer') ||
+                                         element.querySelector('span.ytd-thumbnail-overlay-time-status-renderer') ||
+                                         element.querySelector('#overlays ytd-thumbnail-overlay-time-status-renderer #text');
+                        
                         // Ensure URLs are absolute
                         const videoUrl = titleEl ? (titleEl.href.startsWith('http') ? titleEl.href : 'https://youtube.com' + titleEl.href) : null;
                         const channelUrl = channelEl ? (channelEl.href.startsWith('http') ? channelEl.href : 'https://youtube.com' + channelEl.href) : null;
@@ -211,7 +216,8 @@ class VideoScraper(BaseScraper):
                             channelId: channelId,
                             views: views,
                             publishDate: publishDate,
-                            thumbnailUrl: thumbnail ? thumbnail.src : null
+                            thumbnailUrl: thumbnail ? thumbnail.src : null,
+                            duration: durationEl ? durationEl.textContent.trim() : null
                         };
                     });
                 }""" % str(selectors))
@@ -247,7 +253,8 @@ class VideoScraper(BaseScraper):
                                 'channel_url': info['channelUrl'],
                                 'channel_id': info['channelId'],
                                 'views': self.parse_view_count(info['views']),
-                                'thumbnail': info['thumbnailUrl']
+                                'thumbnail': info['thumbnailUrl'],
+                                'duration': info.get('duration')
                             }
                             
                             # Parse publish date with error handling
@@ -299,7 +306,7 @@ class VideoScraper(BaseScraper):
                                 # Update existing video
                                 cursor.execute('''
                                     UPDATE videos 
-                                    SET title = ?, url = ?, thumbnail = ?, views = ?, published_date = ?
+                                    SET title = ?, url = ?, thumbnail = ?, views = ?, published_date = ?, duration = ?
                                     WHERE id = ?
                                 ''', (
                                     video_info['title'],
@@ -307,6 +314,7 @@ class VideoScraper(BaseScraper):
                                     video_info['thumbnail'],
                                     video_info['views'],
                                     video_info['publish_date'],
+                                    video_info.get('duration'),
                                     video_id
                                 ))
                                 self.db.db.commit()  # Commit the update
@@ -316,8 +324,8 @@ class VideoScraper(BaseScraper):
                                 # Insert new video using a simplified insert to avoid double counting
                                 cursor.execute('''
                                     INSERT INTO videos 
-                                    (id, channel_id, title, url, thumbnail, views, published_date)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    (id, channel_id, title, url, thumbnail, views, published_date, duration)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                                 ''', (
                                     video_id,
                                     video_info['channel_id'],
@@ -325,7 +333,8 @@ class VideoScraper(BaseScraper):
                                     video_info['url'],
                                     video_info['thumbnail'],
                                     video_info['views'],
-                                    video_info['publish_date']
+                                    video_info['publish_date'],
+                                    video_info.get('duration')
                                 ))
                                 self.db.db.commit()  # Commit the insert
                                 new_in_this_scroll += 1

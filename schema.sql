@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS videos (
     views INTEGER DEFAULT 0,
     published_date TIMESTAMP,
     thumbnail TEXT,
+    duration TEXT,
     discovered_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (channel_id) REFERENCES channels(id)
 );

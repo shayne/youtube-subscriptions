@@ -77,6 +77,7 @@ def get_videos():
                 v.thumbnail as thumbnail,
                 v.views as views,
                 v.published_date,
+                v.duration,
                 c.name as channel_name,
                 c.subscriber_count,
                 c.is_verified,
@@ -123,6 +124,7 @@ def get_videos():
                     continue
             
             video['thumbnail'] = get_thumbnail_url(video['id'], video['thumbnail'])
+            video['duration'] = video.get('duration')  # Keep duration in the video object
             
             subscriber_count = video.pop('subscriber_count')
             average_views = video.pop('channel_average_views')
