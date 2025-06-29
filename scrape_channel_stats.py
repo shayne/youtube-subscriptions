@@ -228,14 +228,35 @@ class ChannelStatsScraper(BaseScraper):
             
             if len(views) >= 10:  # Only remove outliers if we have enough videos
                 views.sort()
-                # Remove top and bottom 10% of videos, but at least 1 and at most 5 from each end
-                trim_count = max(1, min(5, len(views) // 10))
-                views = views[trim_count:-trim_count]
-                print(f"Excluded top and bottom {trim_count} videos from average calculation")
+                
+                # Calculate quartiles for better outlier detection
+                q1_index = len(views) // 4
+                q3_index = 3 * len(views) // 4
+                q1 = views[q1_index]
+                q3 = views[q3_index]
+                iqr = q3 - q1
+                
+                # Remove extreme outliers (beyond 2.5 * IQR)
+                lower_bound = max(0, q1 - 2.5 * iqr)
+                upper_bound = q3 + 2.5 * iqr
+                
+                original_count = len(views)
+                views = [v for v in views if lower_bound <= v <= upper_bound]
+                
+                if len(views) < original_count:
+                    print(f"Removed {original_count - len(views)} outliers from average calculation")
+                    print(f"View range after outlier removal: {min(views):,} - {max(views):,}")
             
             if views:
-                average = int(sum(views) / len(views))
-                print(f"Calculated average views from {len(views)} videos: {average:,}")
+                # Use trimmed mean: remove top and bottom 10% for more robust average
+                if len(views) >= 5:
+                    trim_count = max(1, len(views) // 10)
+                    trimmed_views = views[trim_count:-trim_count]
+                    average = int(sum(trimmed_views) / len(trimmed_views))
+                    print(f"Calculated trimmed average from {len(trimmed_views)} videos (excluded {trim_count} from each end): {average:,}")
+                else:
+                    average = int(sum(views) / len(views))
+                    print(f"Calculated average views from {len(views)} videos: {average:,}")
                 return average
             
             print("No valid view counts found")
@@ -359,4 +380,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     scraper = ChannelStatsScraper(debug=args.debug)
-    scraper.run() 
+    scraper.run()

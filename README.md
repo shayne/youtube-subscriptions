@@ -1,30 +1,48 @@
 # YouTube subscriptions viewer
 
-A local web app that displays your YouTube subscription videos sorted by relative performance. The performance score is calculated using an algorithm that considers:
+A local web app that displays your YouTube subscription videos sorted by a sophisticated performance algorithm. The scoring system uses multiple factors to surface high-quality content while giving smaller channels a fair chance to compete.
 
-1. Base performance relative to channel average (75% weight)
+## Ranking Algorithm
 
-   - How well a video performs compared to the channel's typical view count
+The performance score is calculated using a weighted combination of factors:
+
+1. **Base Performance (25% weight)**
+   - Compares video views to the channel's average
+   - Capped at 5x to prevent extreme values
    - Helps identify standout videos within each channel's context
-   - Average performing videos will score around 75%
 
-2. Subscriber reach bonus (50% weight, only applied when positive)
+2. **Engagement Rate (20% weight)**
+   - Rewards videos reaching 10%+ of subscribers
+   - Uses square root scaling for diminishing returns
+   - No penalty for videos below threshold
 
-   - Only kicks in when a video's views exceed the channel's subscriber count
-   - No penalty for videos with fewer views than subscribers
-   - Calculated as (views/subscribers)^1.2 to reward exceptional performance
+3. **Time Decay Factor (20% weight)**
+   - Newer videos receive a boost that decays over 30 days
+   - Uses quadratic decay: (1 - age_in_days/30)²
+   - Helps surface fresh content before it goes viral
 
-3. Absolute views multiplier
-   - Non-linear scaling based on total view count
-   - Calculated as (1.0 + (views^0.5 / 1000000)^0.4)
-   - Gives additional weight to videos with high absolute view counts
+4. **Velocity Metric (15% weight)**
+   - Measures views per hour since publication
+   - Logarithmic scaling prevents extreme values
+   - Identifies trending videos gaining views rapidly
 
-This scoring system helps surface exceptional videos while:
+5. **Channel Size Normalization (10% weight)**
+   - Small channels (<100k subs): +10% bonus
+   - Medium channels (100k-1M): +7% bonus
+   - Large channels (1M-10M): +3% bonus
+   - Helps smaller creators compete fairly
 
-- Identifying breakout videos that exceed subscriber counts
-- Not penalizing channels with legacy subscriber bases
-- Rewarding videos that outperform their channel's average
-- Giving extra weight to videos with high absolute view counts
+6. **Duration Adjustment (10% weight)**
+   - Recognizes longer videos typically get fewer views
+   - Sweet spot: 10-30 minute videos get full bonus
+   - Prevents bias against long-form content
+
+This scoring system ensures:
+- Fresh content gets highlighted
+- Small channels can compete with large ones
+- Quality matters more than channel size
+- Both short and long videos are treated fairly
+- Viral outliers don't skew channel averages
 
 ## Overview
 

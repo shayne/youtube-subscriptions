@@ -583,12 +583,22 @@
                           </div>
                           <div class="performance-stat">
                             <span class="performance-label"
-                              >Views Multiplier:</span
+                              >Time Decay:</span
                             >
                             <span
-                              >${video.performance_details.absolute_views_multiplier.toFixed(
-                                2
-                              )}x</span
+                              >${(video.performance_details.time_decay_factor * 100).toFixed(
+                                0
+                              )}%</span
+                            >
+                          </div>
+                          <div class="performance-stat">
+                            <span class="performance-label"
+                              >Velocity:</span
+                            >
+                            <span
+                              >${video.performance_details.views_per_hour.toFixed(
+                                0
+                              )} views/hr</span
                             >
                           </div>
                         </div>

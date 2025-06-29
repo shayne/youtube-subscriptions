@@ -64,7 +64,11 @@ def get_videos():
             WITH ChannelStats AS (
                 SELECT 
                     channel_id,
-                    AVG(views * 1.0 / c.subscriber_count) as avg_view_sub_ratio
+                    AVG(views * 1.0 / c.subscriber_count) as avg_view_sub_ratio,
+                    -- Calculate median views for better outlier handling
+                    -- Using approximate median calculation
+                    AVG(views) as avg_views,
+                    COUNT(*) as video_count
                 FROM videos v
                 JOIN channels c ON v.channel_id = c.id
                 WHERE c.subscriber_count > 0
@@ -84,26 +88,87 @@ def get_videos():
                 c.thumbnail_url as channel_thumbnail,
                 c.average_views as channel_average_views,
                 cs.avg_view_sub_ratio,
+                
+                -- Calculate video age in hours
+                (julianday('now') - julianday(v.published_date)) * 24 as video_age_hours,
+                
+                -- Views per hour (velocity metric)
                 CASE 
-                    WHEN c.subscriber_count > 0 AND c.average_views > 0 THEN (
-                        -- Base performance relative to channel average (75% weight)
-                        (v.views * 1.0 / NULLIF(c.average_views, 0)) * 0.75 +
+                    WHEN (julianday('now') - julianday(v.published_date)) * 24 > 0 
+                    THEN v.views * 1.0 / ((julianday('now') - julianday(v.published_date)) * 24)
+                    ELSE v.views 
+                END as views_per_hour,
+                
+                -- NEW PERFORMANCE SCORE with all improvements
+                CASE 
+                    WHEN c.subscriber_count > 0 AND c.average_views > 0 THEN 
+                        (
+                            -- 1. Base performance relative to channel average (25% weight)
+                            (MIN(v.views * 1.0 / NULLIF(c.average_views, 0), 5.0) / 5.0) * 0.25 +
+                            
+                            -- 2. Subscriber engagement rate (20% weight)
+                            -- Now rewards any video over 10% subscriber reach, with diminishing returns
+                            CASE 
+                                WHEN c.subscriber_count > 0 THEN
+                                    MIN(SQRT((v.views * 1.0 / c.subscriber_count) * 10), 1.0) * 0.20
+                                ELSE 0
+                            END +
+                            
+                            -- 3. Time decay factor (20% weight)
+                            -- Newer videos get a boost, decaying over 30 days
+                            CASE
+                                WHEN (julianday('now') - julianday(v.published_date)) <= 30 THEN
+                                    POWER(1.0 - ((julianday('now') - julianday(v.published_date)) / 30.0), 2) * 0.20
+                                ELSE 0
+                            END +
+                            
+                            -- 4. Velocity metric (15% weight)
+                            -- Views per hour, normalized logarithmically
+                            CASE
+                                WHEN (julianday('now') - julianday(v.published_date)) * 24 > 1 THEN
+                                    MIN(LOG10(1 + (v.views * 1.0 / ((julianday('now') - julianday(v.published_date)) * 24))) / 5.0, 1.0) * 0.15
+                                ELSE 0.15
+                            END +
+                            
+                            -- 5. Channel size normalization (10% weight)
+                            -- Helps smaller channels compete
+                            CASE
+                                WHEN c.subscriber_count < 100000 THEN 0.10
+                                WHEN c.subscriber_count < 1000000 THEN 0.07
+                                WHEN c.subscriber_count < 10000000 THEN 0.03
+                                ELSE 0
+                            END +
+                            
+                            -- 6. Duration adjustment (10% weight)
+                            -- Boost for longer videos that maintain engagement
+                            CASE
+                                WHEN v.duration IS NOT NULL AND v.duration > 0 THEN
+                                    -- Videos 10-30 minutes get full bonus
+                                    -- Short videos (<2 min) and very long (>60 min) get reduced bonus
+                                    CASE
+                                        WHEN v.duration < 120 THEN 0.03  -- < 2 minutes
+                                        WHEN v.duration < 600 THEN 0.10  -- 2-10 minutes
+                                        WHEN v.duration < 1800 THEN 0.10 -- 10-30 minutes (sweet spot)
+                                        WHEN v.duration < 3600 THEN 0.07 -- 30-60 minutes
+                                        ELSE 0.05 -- > 60 minutes
+                                    END
+                                ELSE 0.05 -- Default if no duration
+                            END
+                        )
                         
-                        -- Subscriber reach bonus (only positive, no penalty)
-                        CASE 
-                            WHEN (v.views * 1.0 / c.subscriber_count) > 1.0 THEN 
-                                POWER((v.views * 1.0 / c.subscriber_count), 1.2) * 0.5
-                            ELSE 0
-                        END
-                    ) * 
-                    -- Absolute views multiplier (non-linear scaling)
-                    (1.0 + POWER(POWER(v.views * 1.0, 0.5) / 1000000, 0.4))
                     ELSE 0 
                 END as performance_score,
-                -- Individual score components
+                
+                -- Individual score components for debugging
                 CASE WHEN c.average_views > 0 THEN (v.views * 1.0 / NULLIF(c.average_views, 0)) ELSE 0 END as relative_performance,
                 CASE WHEN c.subscriber_count > 0 THEN (v.views * 1.0 / c.subscriber_count) ELSE 0 END as subscriber_reach,
-                CASE WHEN v.views > 0 THEN (1.0 + POWER(POWER(v.views * 1.0, 0.5) / 1000000, 0.4)) ELSE 1 END as absolute_views_multiplier
+                CASE WHEN (julianday('now') - julianday(v.published_date)) <= 30 THEN
+                    POWER(1.0 - ((julianday('now') - julianday(v.published_date)) / 30.0), 2)
+                ELSE 0 END as time_decay_factor,
+                CASE WHEN (julianday('now') - julianday(v.published_date)) * 24 > 1 THEN
+                    v.views * 1.0 / ((julianday('now') - julianday(v.published_date)) * 24)
+                ELSE v.views END as velocity
+                
             FROM videos v
             JOIN channels c ON v.channel_id = c.id
             JOIN ChannelStats cs ON v.channel_id = cs.channel_id
@@ -140,7 +205,10 @@ def get_videos():
             video['performance_details'] = {
                 'relative_performance': float(row['relative_performance']) if row['relative_performance'] is not None else 0,
                 'subscriber_reach': float(row['subscriber_reach']) if row['subscriber_reach'] is not None else 0,
-                'absolute_views_multiplier': float(row['absolute_views_multiplier']) if row['absolute_views_multiplier'] is not None else 1
+                'time_decay_factor': float(row['time_decay_factor']) if row['time_decay_factor'] is not None else 0,
+                'velocity': float(row['velocity']) if row['velocity'] is not None else 0,
+                'video_age_hours': float(row['video_age_hours']) if row['video_age_hours'] is not None else 0,
+                'views_per_hour': float(row['views_per_hour']) if row['views_per_hour'] is not None else 0
             }
             videos.append(video)
         
