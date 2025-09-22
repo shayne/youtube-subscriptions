@@ -173,8 +173,10 @@ class VideoScraper(BaseScraper):
                         const thumbnail = element.querySelector('img.yt-core-image--loaded') ||
                                         element.querySelector('yt-image img');
 
-                        // Duration
-                        const durationEl = element.querySelector('yt-thumbnail-overlay-time-status-view-model span') ||
+                        // Duration - updated selector for new YouTube structure
+                        const durationEl = element.querySelector('badge-shape.yt-badge-shape div.yt-badge-shape__text') ||
+                                         element.querySelector('div.yt-badge-shape__text') ||
+                                         element.querySelector('yt-thumbnail-overlay-time-status-view-model span') ||
                                          element.querySelector('ytd-thumbnail-overlay-time-status-renderer span');
 
                         // Ensure URLs are absolute
