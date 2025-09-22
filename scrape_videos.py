@@ -135,83 +135,86 @@ class VideoScraper(BaseScraper):
             
             try:
                 # Extract all video information in one JavaScript call
-                videos_info = self.page.evaluate(r"""() => {
-                    const selectors = %s;
+                videos_info = self.page.evaluate("""() => {
+                    const selectors = [
+                        'ytd-rich-item-renderer:not([is-slim-media])',
+                        'ytd-rich-grid-media',
+                        'ytd-grid-video-renderer',
+                        '#contents > ytd-rich-item-renderer'
+                    ];
                     let elements = [];
-                    
+
                     // Find first selector that returns elements
                     for (const selector of selectors) {
                         elements = Array.from(document.querySelectorAll(selector));
                         if (elements.length > 0) break;
                     }
-                    
+
                     // Extract info from each element
                     return elements.map(element => {
-                        const titleEl = element.querySelector('a#video-title-link') || 
-                                      element.querySelector('a[id="video-title-link"]') ||
-                                      element.querySelector('h3 a#video-title') ||
+                        // Title - updated selector for new YouTube structure
+                        const titleEl = element.querySelector('h3 a') ||
+                                      element.querySelector('a#video-title-link') ||
                                       element.querySelector('#video-title');
-                                      
-                        const channelEl = element.querySelector('#channel-name a') ||
-                                        element.querySelector('ytd-channel-name a') ||
-                                        element.querySelector('[id="channel-name"] a');
-                                        
-                        const metadata = element.querySelector('#metadata-line');
-                        const thumbnail = element.querySelector('yt-image img');
-                        
-                        // Extract duration from thumbnail overlay
-                        const durationEl = element.querySelector('ytd-thumbnail-overlay-time-status-renderer span.style-scope.ytd-thumbnail-overlay-time-status-renderer') ||
-                                         element.querySelector('span.ytd-thumbnail-overlay-time-status-renderer') ||
-                                         element.querySelector('#overlays ytd-thumbnail-overlay-time-status-renderer #text');
-                        
+
+                        // Channel - updated to find channel link in new structure
+                        const channelEl = element.querySelector('a.yt-core-attributed-string__link') ||
+                                        element.querySelector('[href*="/@"]') ||
+                                        element.querySelector('[href*="/channel/"]');
+
+                        // Filter out video links from channel links
+                        const isChannelLink = channelEl && !channelEl.href.includes('/watch?v=');
+                        const finalChannelEl = isChannelLink ? channelEl : null;
+
+                        // Metadata - look for spans in the metadata area
+                        const metadataSpans = element.querySelectorAll('yt-lockup-metadata-view-model span');
+
+                        // Thumbnail
+                        const thumbnail = element.querySelector('img.yt-core-image--loaded') ||
+                                        element.querySelector('yt-image img');
+
+                        // Duration
+                        const durationEl = element.querySelector('yt-thumbnail-overlay-time-status-view-model span') ||
+                                         element.querySelector('ytd-thumbnail-overlay-time-status-renderer span');
+
                         // Ensure URLs are absolute
-                        const videoUrl = titleEl ? (titleEl.href.startsWith('http') ? titleEl.href : 'https://youtube.com' + titleEl.href) : null;
-                        const channelUrl = channelEl ? (channelEl.href.startsWith('http') ? channelEl.href : 'https://youtube.com' + channelEl.href) : null;
-                        
-                        // Try to get publish date from metadata line
+                        const videoUrl = titleEl ? (titleEl.href && titleEl.href.startsWith('http') ? titleEl.href : null) : null;
+                        const channelUrl = finalChannelEl ? (finalChannelEl.href && finalChannelEl.href.startsWith('http') ? finalChannelEl.href : null) : null;
+
+                        // Parse metadata for views and publish date
                         let publishDate = null;
-                        if (metadata) {
-                            const spans = metadata.querySelectorAll('span');
-                            spans.forEach(span => {
-                                const text = span.textContent.trim();
-                                if (!text.includes('views')) {
-                                    publishDate = text;
-                                }
-                            });
-                        }
-                        
+                        let views = 0;
+
+                        metadataSpans.forEach(span => {
+                            const text = span.textContent.trim();
+                            if (text.includes('views')) {
+                                views = text;
+                            } else if (text.includes('ago') || text.includes('hour') || text.includes('day') ||
+                                     text.includes('week') || text.includes('month') || text.includes('year')) {
+                                publishDate = text;
+                            }
+                        });
+
                         // Get channel ID from URL (prefer handle over channel ID)
                         let channelId = null;
                         if (channelUrl) {
                             // First try to get handle
-                            const handleMatch = channelUrl.match(/@([\w-]+)/);
+                            const handleMatch = channelUrl.match(/@([\\w-]+)/);
                             if (handleMatch) {
                                 channelId = handleMatch[1];
                             } else {
                                 // Fallback to channel ID if no handle
-                                const channelMatch = channelUrl.match(/channel\/([\w-]+)/);
+                                const channelMatch = channelUrl.match(/channel\\/([\\w-]+)/);
                                 if (channelMatch) {
                                     channelId = channelMatch[1];
                                 }
                             }
                         }
-                        
-                        let views = 0;
-                        if (metadata) {
-                            const spans = metadata.querySelectorAll('span');
-                            for (const span of spans) {
-                                const text = span.textContent.trim();
-                                if (text.includes('views')) {
-                                    views = text;
-                                    break;
-                                }
-                            }
-                        }
-                        
+
                         return {
                             title: titleEl ? titleEl.textContent.trim() : null,
                             url: videoUrl,
-                            channelName: channelEl ? channelEl.textContent.trim() : null,
+                            channelName: finalChannelEl ? finalChannelEl.textContent.trim() : null,
                             channelUrl: channelUrl,
                             channelId: channelId,
                             views: views,
@@ -220,7 +223,7 @@ class VideoScraper(BaseScraper):
                             duration: durationEl ? durationEl.textContent.trim() : null
                         };
                     });
-                }""" % str(selectors))
+                }""")
                 
                 if not videos_info:
                     no_new_content_count += 1
