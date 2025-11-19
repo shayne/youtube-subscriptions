@@ -4,45 +4,35 @@ A local web app that displays your YouTube subscription videos sorted by a sophi
 
 ## Ranking Algorithm
 
-The performance score is calculated using a weighted combination of factors:
+The performance score is calculated using a weighted combination of factors, designed to surface exceptional videos even when the scraper is run sporadically:
 
-1. **Base Performance (25% weight)**
-   - Compares video views to the channel's average
-   - Capped at 5x to prevent extreme values
-   - Helps identify standout videos within each channel's context
+1. **Base Performance (35% weight)**
+   - Compares video views to the channel's average (capped at 5×)
+   - Highlights true standouts within each channel's history
 
-2. **Engagement Rate (20% weight)**
+2. **Engagement Rate (25% weight)**
    - Rewards videos reaching 10%+ of subscribers
-   - Uses square root scaling for diminishing returns
-   - No penalty for videos below threshold
+   - Square-root scaling to give diminishing returns without punishing lower reach
 
-3. **Time Decay Factor (20% weight)**
-   - Newer videos receive a boost that decays over 30 days
-   - Uses quadratic decay: (1 - age_in_days/30)²
-   - Helps surface fresh content before it goes viral
+3. **Forecasted 48h Performance (20% weight)**
+   - Projects total views at 48h assuming ~60% arrive in the first 8h and ~95% by 48h
+   - Gives very new uploads credit for strong early velocity
 
-4. **Velocity Metric (15% weight)**
-   - Measures views per hour since publication
-   - Logarithmic scaling prevents extreme values
-   - Identifies trending videos gaining views rapidly
+4. **Velocity Metric (10% weight)**
+   - Views per hour since publication, logarithmically scaled as a bonus
+   - Keeps currently surging content competitive without penalizing slower burns
 
-5. **Channel Size Normalization (10% weight)**
-   - Small channels (<100k subs): +10% bonus
-   - Medium channels (100k-1M): +7% bonus
-   - Large channels (1M-10M): +3% bonus
+5. **Channel Size Normalization (7% weight)**
+   - Small channels (<100k subs): +7% bonus
+   - Medium channels (100k-1M): +5% bonus
+   - Large channels (1M-10M): +2% bonus
    - Helps smaller creators compete fairly
 
-6. **Duration Adjustment (10% weight)**
-   - Recognizes longer videos typically get fewer views
-   - Sweet spot: 10-30 minute videos get full bonus
-   - Prevents bias against long-form content
+6. **Duration Adjustment (3% weight)**
+   - Slightly boosts videos in the 10–30 minute sweet spot
+   - Keeps short/long content competitive without heavy bias
 
-This scoring system ensures:
-- Fresh content gets highlighted
-- Small channels can compete with large ones
-- Quality matters more than channel size
-- Both short and long videos are treated fairly
-- Viral outliers don't skew channel averages
+This scoring system keeps the focus on videos that outperform their channel norms, credits early momentum as a forecast (not just recency), and avoids decaying scores just because content is older when you run the scraper.
 
 ## Overview
 
