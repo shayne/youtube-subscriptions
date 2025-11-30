@@ -1,4 +1,4 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Playwright, BrowserContext, Page
 import time
 import os
 import shutil
@@ -7,16 +7,38 @@ from pathlib import Path
 import atexit
 import signal
 
+
 class BaseScraper:
-    def __init__(self, debug=False):
-        self.browser = None
-        self.context = None
-        self.page = None
+    _browser: BrowserContext | None
+    _page: Page | None
+    _playwright: Playwright | None
+
+    def __init__(self, debug: bool = False):
+        self._browser = None
+        self._page = None
         self.chrome_profile_dir = Path("chrome_profile")
-        self.playwright = None
+        self._playwright = None
         self.headless = not debug  # Start in non-headless mode if debug=True
         # Register cleanup on exit
         atexit.register(self.cleanup)
+
+    @property
+    def playwright(self) -> Playwright:
+        if self._playwright is None:
+            raise RuntimeError("Playwright not initialized. Call setup() first.")
+        return self._playwright
+
+    @property
+    def browser(self) -> BrowserContext:
+        if self._browser is None:
+            raise RuntimeError("Browser not initialized. Call setup() first.")
+        return self._browser
+
+    @property
+    def page(self) -> Page:
+        if self._page is None:
+            raise RuntimeError("Page not initialized. Call setup() first.")
+        return self._page
 
     def setup(self):
         """Initialize browser with a persistent Chrome profile"""
@@ -24,15 +46,15 @@ class BaseScraper:
         self.chrome_profile_dir.mkdir(exist_ok=True)
         print(f"Using Chrome profile at: {self.chrome_profile_dir.absolute()}")
 
-        self.playwright = sync_playwright().start()
+        self._playwright = sync_playwright().start()
         self._launch_browser()
 
     def _launch_browser(self):
         """Launch browser with current headless setting"""
-        if self.browser:
-            self.browser.close()
+        if self._browser:
+            self._browser.close()
             
-        self.browser = self.playwright.chromium.launch_persistent_context(
+        self._browser = self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.chrome_profile_dir),
             channel="chrome",  # Use installed Chrome instead of Chromium
             headless=self.headless,
@@ -45,7 +67,7 @@ class BaseScraper:
                 '--password-store=basic'
             ]
         )
-        self.page = self.browser.new_page()
+        self._page = self.browser.new_page()
 
     def is_logged_in(self):
         """Check if we're already logged into YouTube"""
@@ -162,44 +184,25 @@ class BaseScraper:
         """Clean up resources"""
         print("\nCleaning up...")
         try:
-            # Set a very short timeout for closing operations
-            if hasattr(self, 'page') and self.page:
+            if self._page:
                 try:
-                    self.page.close(timeout=1000)
-                except:
-                    pass
-            
-            if hasattr(self, 'context') and self.context:
-                try:
-                    self.context.close(timeout=1000)
+                    self._page.close()
                 except:
                     pass
                 
-            if hasattr(self, 'browser') and self.browser:
+            if self._browser:
                 try:
-                    self.browser.close(timeout=1000)
+                    self._browser.close()
                 except:
                     pass
                     
-            if hasattr(self, 'playwright') and self.playwright:
+            if self._playwright:
                 try:
-                    self.playwright.stop()
+                    self._playwright.stop()
                 except:
                     pass
         except:
-            # If anything fails, try to force kill browser
-            import psutil
-            import os
-            try:
-                current_process = psutil.Process(os.getpid())
-                children = current_process.children(recursive=True)
-                for child in children:
-                    try:
-                        child.kill()
-                    except:
-                        pass
-            except:
-                pass
+            pass
         print("Cleanup complete")
 
     def run(self):

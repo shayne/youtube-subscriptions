@@ -4,9 +4,10 @@ import re
 import os
 
 class YouTubeDB:
-    def __init__(self, db_path='youtube.db'):
+    db: sqlite3.Connection
+
+    def __init__(self, db_path: str = 'youtube.db'):
         self.db_path = db_path
-        self.db = None
         self.setup_database()
     
     def setup_database(self):
