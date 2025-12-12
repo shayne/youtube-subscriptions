@@ -3,12 +3,51 @@ from db_schema import YouTubeDB
 from datetime import datetime, timedelta
 import re
 import argparse
+import json
+from urllib import request
 
 class VideoScraper(BaseScraper):
     def __init__(self, debug=False):
         super().__init__(debug)
         self.db = YouTubeDB()
         self.videos = []
+
+    def resolve_channel_using_oembed(self, video_id):
+        """Fallback: hit YouTube oEmbed to recover channel info when the feed omits it (e.g., collab videos)."""
+        url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        try:
+            with request.urlopen(url, timeout=10) as resp:
+                data = json.load(resp)
+        except Exception:
+            return None, None, None
+
+        author_url = data.get("author_url")
+        author_name = data.get("author_name")
+        channel_id = None
+        if author_url:
+            handle_match = re.search(r'/@([A-Za-z0-9_-]+)', author_url)
+            id_match = re.search(r'/channel/([A-Za-z0-9_-]+)', author_url)
+            if id_match:
+                channel_id = id_match.group(1)
+            elif handle_match:
+                channel_id = handle_match.group(1)
+        return channel_id, author_url, author_name
+
+    def ensure_channel_record(self, channel_id, channel_name=None, channel_url=None):
+        """Make sure the channel exists in DB before inserting videos."""
+        cursor = self.db.db.cursor()
+        cursor.execute('SELECT id FROM channels WHERE id = ?', (channel_id,))
+        if cursor.fetchone():
+            return
+        cursor.execute('''
+            INSERT INTO channels (id, name, url)
+            VALUES (?, ?, ?)
+        ''', (
+            channel_id,
+            channel_name or '',
+            channel_url or f'https://www.youtube.com/channel/{channel_id}' if channel_id else ''
+        ))
+        self.db.db.commit()
 
     def parse_view_count(self, view_count_text):
         """Convert view count text like '3.2K views', '15K views', '3M views' into numbers."""
@@ -135,7 +174,7 @@ class VideoScraper(BaseScraper):
             
             try:
                 # Extract all video information in one JavaScript call
-                videos_info = self.page.evaluate("""() => {
+                videos_info = self.page.evaluate(r"""() => {
                     const selectors = [
                         'ytd-rich-item-renderer:not([is-slim-media])',
                         'ytd-rich-grid-media',
@@ -168,6 +207,7 @@ class VideoScraper(BaseScraper):
 
                         // Metadata - look for spans in the metadata area
                         const metadataSpans = element.querySelectorAll('yt-lockup-metadata-view-model span');
+                        const channelTextFromMetadata = element.querySelector('yt-content-metadata-view-model span')?.textContent?.trim() || null;
 
                         // Thumbnail
                         const thumbnail = element.querySelector('img.yt-core-image--loaded') ||
@@ -180,8 +220,13 @@ class VideoScraper(BaseScraper):
                                          element.querySelector('ytd-thumbnail-overlay-time-status-renderer span');
 
                         // Ensure URLs are absolute
-                        const videoUrl = titleEl ? (titleEl.href && titleEl.href.startsWith('http') ? titleEl.href : null) : null;
-                        const channelUrl = finalChannelEl ? (finalChannelEl.href && finalChannelEl.href.startsWith('http') ? finalChannelEl.href : null) : null;
+                        const absolutize = (href) => {
+                            if (!href) return null;
+                            if (href.startsWith('http')) return href;
+                            return new URL(href, 'https://www.youtube.com').href;
+                        };
+                        const videoUrl = titleEl ? absolutize(titleEl.getAttribute('href') || titleEl.href) : null;
+                        const channelUrl = finalChannelEl ? absolutize(finalChannelEl.getAttribute('href') || finalChannelEl.href) : null;
 
                         // Parse metadata for views and publish date
                         let publishDate = null;
@@ -201,7 +246,7 @@ class VideoScraper(BaseScraper):
                         let channelId = null;
                         if (channelUrl) {
                             // First try to get handle
-                            const handleMatch = channelUrl.match(/@([\\w-]+)/);
+                            const handleMatch = channelUrl.match(/@([\w-]+)/);
                             if (handleMatch) {
                                 channelId = handleMatch[1];
                             } else {
@@ -219,6 +264,7 @@ class VideoScraper(BaseScraper):
                             channelName: finalChannelEl ? finalChannelEl.textContent.trim() : null,
                             channelUrl: channelUrl,
                             channelId: channelId,
+                            channelText: channelTextFromMetadata,
                             views: views,
                             publishDate: publishDate,
                             thumbnailUrl: thumbnail ? thumbnail.src : null,
@@ -254,7 +300,7 @@ class VideoScraper(BaseScraper):
                             video_info = {
                                 'title': info['title'],
                                 'url': info['url'],
-                                'channel_name': info['channelName'],
+                                'channel_name': info['channelName'] or info.get('channelText'),
                                 'channel_url': info['channelUrl'],
                                 'channel_id': info['channelId'],
                                 'views': self.parse_view_count(info['views']),
@@ -288,6 +334,20 @@ class VideoScraper(BaseScraper):
                             video_id = video_id_match.group(1)
                             if video_id in processed_video_ids:
                                 continue
+
+                            # If channel info missing (common with collaboration cards), hit oEmbed to recover it
+                            if not video_info['channel_id']:
+                                resolved_id, resolved_url, resolved_name = self.resolve_channel_using_oembed(video_id)
+                                if resolved_id:
+                                    video_info['channel_id'] = resolved_id
+                                if resolved_url and not video_info.get('channel_url'):
+                                    video_info['channel_url'] = resolved_url
+                                if resolved_name and not video_info.get('channel_name'):
+                                    video_info['channel_name'] = resolved_name
+                            
+                            # Still missing channel? skip to avoid DB FK issues
+                            if not video_info['channel_id']:
+                                continue
                             
                             processed_video_ids.add(video_id)
                             
@@ -306,6 +366,13 @@ class VideoScraper(BaseScraper):
                             cursor = self.db.db.cursor()
                             cursor.execute('SELECT id FROM videos WHERE id = ?', (video_id,))
                             existing_video = cursor.fetchone()
+
+                            # Ensure channel row exists before upserting the video
+                            self.ensure_channel_record(
+                                video_info['channel_id'],
+                                video_info.get('channel_name'),
+                                video_info.get('channel_url')
+                            )
                             
                             if existing_video:
                                 # Update existing video
