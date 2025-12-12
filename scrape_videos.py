@@ -251,7 +251,7 @@ class VideoScraper(BaseScraper):
                                 channelId = handleMatch[1];
                             } else {
                                 // Fallback to channel ID if no handle
-                                const channelMatch = channelUrl.match(/channel\\/([\\w-]+)/);
+                                const channelMatch = channelUrl.match(/channel\/([\w-]+)/);
                                 if (channelMatch) {
                                     channelId = channelMatch[1];
                                 }
