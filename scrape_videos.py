@@ -6,11 +6,19 @@ import argparse
 import json
 from urllib import request
 
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TaskID
+
 class VideoScraper(BaseScraper):
     def __init__(self, debug=False):
         super().__init__(debug)
         self.db = YouTubeDB()
         self.videos = []
+        self.console = Console()
 
     def resolve_channel_using_oembed(self, video_id):
         """Fallback: hit YouTube oEmbed to recover channel info when the feed omits it (e.g., collab videos)."""
@@ -32,22 +40,6 @@ class VideoScraper(BaseScraper):
             elif handle_match:
                 channel_id = handle_match.group(1)
         return channel_id, author_url, author_name
-
-    def ensure_channel_record(self, channel_id, channel_name=None, channel_url=None):
-        """Make sure the channel exists in DB before inserting videos."""
-        cursor = self.db.db.cursor()
-        cursor.execute('SELECT id FROM channels WHERE id = ?', (channel_id,))
-        if cursor.fetchone():
-            return
-        cursor.execute('''
-            INSERT INTO channels (id, name, url)
-            VALUES (?, ?, ?)
-        ''', (
-            channel_id,
-            channel_name or '',
-            channel_url or f'https://www.youtube.com/channel/{channel_id}' if channel_id else ''
-        ))
-        self.db.db.commit()
 
     def parse_view_count(self, view_count_text):
         """Convert view count text like '3.2K views', '15K views', '3M views' into numbers."""
@@ -139,6 +131,46 @@ class VideoScraper(BaseScraper):
         max_old_videos = 3  # Stop after finding this many old videos
         total_new = 0
         total_updated = 0
+        missing_channel_videos = 0
+        missing_channel_log = []
+        stop_reason = ""
+
+        max_scrolls = 20
+
+        progress = Progress(
+            SpinnerColumn(style="cyan"),
+            TextColumn("[bold cyan]Scroll[/]"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=self.console,
+            expand=True,
+        )
+        scroll_task: TaskID = progress.add_task("scrolling", total=max_scrolls)
+
+        def render_status(scroll_num, phase, notes=""):
+            stats = Table.grid(expand=True)
+            stats.add_column(justify="left")
+            stats.add_row(f"[white]Phase:[/] {phase}")
+            stats.add_row(f"[cyan]Processed:[/] {len(processed_video_ids)}")
+            stats.add_row(f"[green]New:[/] {total_new}   [yellow]Updated:[/] {total_updated}")
+            stats.add_row(f"[red]Missing channels:[/] {missing_channel_videos}")
+            if notes:
+                stats.add_row(f"[bright_magenta]Note:[/] {notes}")
+
+            warn_panel = Panel(
+                "\n".join(missing_channel_log[-4:]) or "No warnings",
+                title="Recent warnings",
+                border_style="red" if missing_channel_log else "dim",
+                height=6,
+            )
+
+            body = Group(
+                progress,
+                Panel(stats, border_style="bright_blue", title=f"Scroll {scroll_num}/{max_scrolls}"),
+                warn_panel,
+            )
+            return Panel(body, title="YouTube Subscriptions", border_style="bright_magenta")
         
         # Try different selectors for video elements
         selectors = [
@@ -152,29 +184,14 @@ class VideoScraper(BaseScraper):
         no_new_content_count = 0
         max_no_new_content = 3
         
-        def update_status(scroll_num, status_line, details="", extra=""):
-            """Print a 3-line rolling status update"""
-            # Move cursor up 3 lines and clear them
-            print('\033[2K\033[1G', end='')  # Clear line and move to start
-            print('\033[A' * 3, end='')      # Move up 3 lines
-            print(f"Scroll {scroll_num}/20: {status_line}")
-            print(details if details else "")
-            print(extra if extra else "")
-        
-        # Make room for status lines once at the start
-        print("\n\n")  # Two newlines to make room for 3 lines total
-        
-        for i in range(20):  # Max scrolls
-            update_status(
-                i + 1,
-                "Loading videos...",
-                "Processing latest videos",
-                f"Found {len(processed_video_ids)} videos so far"
-            )
-            
-            try:
-                # Extract all video information in one JavaScript call
-                videos_info = self.page.evaluate(r"""() => {
+        with Live(render_status(0, "Starting up"), refresh_per_second=8, console=self.console, transient=False) as live:
+            for i in range(max_scrolls):  # Max scrolls
+                progress.update(scroll_task, completed=i)
+                live.update(render_status(i + 1, "Loading feed"))
+                
+                try:
+                    # Extract all video information in one JavaScript call
+                    videos_info = self.page.evaluate(r"""() => {
                     const selectors = [
                         'ytd-rich-item-renderer:not([is-slim-media])',
                         'ytd-rich-grid-media',
@@ -273,186 +290,193 @@ class VideoScraper(BaseScraper):
                     });
                 }""")
                 
-                if not videos_info:
-                    no_new_content_count += 1
-                    if no_new_content_count >= max_no_new_content:
-                        update_status(i + 1, "No new content found", "Finishing up...", f"Found {len(processed_video_ids)} videos total")
+                    if not videos_info:
+                        no_new_content_count += 1
+                        if no_new_content_count >= max_no_new_content:
+                            stop_reason = "No new content found"
+                            break
+                        if i < 5:
+                            self.wait_for_page_load(2)
+                            continue
+                        else:
+                            stop_reason = "No content returned from page"
+                            break
+                    
+                    batch_size = 10
+                    new_in_this_scroll = 0
+                    updated_in_this_scroll = 0
+                    
+                    for j in range(0, len(videos_info), batch_size):
+                        batch = videos_info[j:j+batch_size]
+                        
+                        for info in batch:
+                            try:
+                                if not info['title'] or not info['url']:
+                                    continue
+                                
+                                video_info = {
+                                    'title': info['title'],
+                                    'url': info['url'],
+                                    'channel_name': info['channelName'] or info.get('channelText'),
+                                    'channel_url': info['channelUrl'],
+                                    'channel_id': info['channelId'],
+                                    'views': self.parse_view_count(info['views']),
+                                    'thumbnail': info['thumbnailUrl'],
+                                    'duration': info.get('duration')
+                                }
+                                
+                                try:
+                                    video_info['publish_date'] = self.parse_date(info['publishDate']) if info['publishDate'] else None
+                                except ValueError as e:
+                                    if "too old" in str(e):
+                                        old_videos_count += 1
+                                        if old_videos_count >= max_old_videos:
+                                            stop_reason = "Reached older content in feed"
+                                            break
+                                        continue
+                                    else:
+                                        continue
+                                
+                                if not video_info['publish_date']:
+                                    continue
+                                
+                                video_id_match = re.search(r'v=([\w-]+)', video_info['url'])
+                                if not video_id_match:
+                                    continue
+                                
+                                video_id = video_id_match.group(1)
+                                if video_id in processed_video_ids:
+                                    continue
+
+                                if not video_info['channel_id']:
+                                    resolved_id, resolved_url, resolved_name = self.resolve_channel_using_oembed(video_id)
+                                    if resolved_id:
+                                        video_info['channel_id'] = resolved_id
+                                    if resolved_url and not video_info.get('channel_url'):
+                                        video_info['channel_url'] = resolved_url
+                                    if resolved_name and not video_info.get('channel_name'):
+                                        video_info['channel_name'] = resolved_name
+                                
+                                if not video_info['channel_id']:
+                                    missing_channel_videos += 1
+                                    missing_channel_log.append(f"{video_info['title']} ({video_id}) - missing channel")
+                                    continue
+
+                                cursor = self.db.db.cursor()
+                                cursor.execute('SELECT 1 FROM channels WHERE id = ?', (video_info['channel_id'],))
+                                if not cursor.fetchone():
+                                    missing_channel_videos += 1
+                                    missing_channel_log.append(f"{video_info['title']} ({video_id}) - channel {video_info['channel_id']} not tracked")
+                                    continue
+                                
+                                processed_video_ids.add(video_id)
+                                
+                                if video_info['publish_date']:
+                                    try:
+                                        publish_date = datetime.fromisoformat(video_info['publish_date'])
+                                        if publish_date < cutoff_date:
+                                            old_videos_count += 1
+                                            if old_videos_count >= max_old_videos:
+                                                stop_reason = "Reached content older than 30 days"
+                                                break
+                                            continue
+                                    except ValueError:
+                                        continue
+                                
+                                cursor.execute('SELECT id FROM videos WHERE id = ?', (video_id,))
+                                existing_video = cursor.fetchone()
+                                
+                                if existing_video:
+                                    cursor.execute('''
+                                        UPDATE videos 
+                                        SET title = ?, url = ?, thumbnail = ?, views = ?, published_date = ?, duration = ?
+                                        WHERE id = ?
+                                    ''', (
+                                        video_info['title'],
+                                        video_info['url'],
+                                        video_info['thumbnail'],
+                                        video_info['views'],
+                                        video_info['publish_date'],
+                                        video_info.get('duration'),
+                                        video_id
+                                    ))
+                                    self.db.db.commit()
+                                    updated_in_this_scroll += 1
+                                    total_updated += 1
+                                else:
+                                    cursor.execute('''
+                                        INSERT INTO videos 
+                                        (id, channel_id, title, url, thumbnail, views, published_date, duration)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                    ''', (
+                                        video_id,
+                                        video_info['channel_id'],
+                                        video_info['title'],
+                                        video_info['url'],
+                                        video_info['thumbnail'],
+                                        video_info['views'],
+                                        video_info['publish_date'],
+                                        video_info.get('duration')
+                                    ))
+                                    self.db.db.commit()
+                                    new_in_this_scroll += 1
+                                    total_new += 1
+                                
+                                old_videos_count = 0
+                                
+                                if (new_in_this_scroll + updated_in_this_scroll) % 5 == 0:
+                                    live.update(render_status(i + 1, "Processing videos"))
+                            
+                            except Exception:
+                                continue
+
+                        if stop_reason:
+                            break
+
+                    if stop_reason:
+                        live.update(render_status(i + 1, "Stopping", stop_reason))
                         break
+
+                    if new_in_this_scroll == 0 and updated_in_this_scroll == 0:
+                        no_new_content_count += 1
+                        if no_new_content_count >= max_no_new_content:
+                            stop_reason = "No new/updated videos after repeated scrolls"
+                            break
+                    else:
+                        no_new_content_count = 0
+                    
+                    current_height = self.page.evaluate('document.documentElement.scrollHeight')
+                    if current_height == last_height:
+                        no_new_content_count += 1
+                        if no_new_content_count >= max_no_new_content:
+                            stop_reason = "Reached end of feed"
+                            break
+                    
+                    last_height = current_height
+                    live.update(render_status(i + 1, "Scrolling feed"))
+                    self.scroll_page()
+                    
+                except Exception:
                     if i < 5:
                         self.wait_for_page_load(2)
                         continue
                     else:
+                        stop_reason = "Error while scrolling - stopping early"
                         break
-                
-                # Process videos in smaller batches
-                batch_size = 10
-                new_in_this_scroll = 0
-                updated_in_this_scroll = 0
-                
-                for j in range(0, len(videos_info), batch_size):
-                    batch = videos_info[j:j+batch_size]
-                    
-                    for info in batch:
-                        try:
-                            if not info['title'] or not info['url']:
-                                continue
-                                
-                            video_info = {
-                                'title': info['title'],
-                                'url': info['url'],
-                                'channel_name': info['channelName'] or info.get('channelText'),
-                                'channel_url': info['channelUrl'],
-                                'channel_id': info['channelId'],
-                                'views': self.parse_view_count(info['views']),
-                                'thumbnail': info['thumbnailUrl'],
-                                'duration': info.get('duration')
-                            }
-                            
-                            # Parse publish date with error handling
-                            try:
-                                video_info['publish_date'] = self.parse_date(info['publishDate']) if info['publishDate'] else None
-                            except ValueError as e:
-                                if "too old" in str(e):
-                                    # Expected error for old videos
-                                    old_videos_count += 1
-                                    if old_videos_count >= max_old_videos:
-                                        update_status(i + 1, "Reached older content", "Finishing up...", f"Found {len(processed_video_ids)} videos total")
-                                        return
-                                    continue
-                                else:
-                                    # Skip videos with unparseable dates without logging
-                                    continue
-                            
-                            # Skip if no valid publish date
-                            if not video_info['publish_date']:
-                                continue
-                            
-                            video_id_match = re.search(r'v=([\w-]+)', video_info['url'])
-                            if not video_id_match:
-                                continue
-                            
-                            video_id = video_id_match.group(1)
-                            if video_id in processed_video_ids:
-                                continue
 
-                            # If channel info missing (common with collaboration cards), hit oEmbed to recover it
-                            if not video_info['channel_id']:
-                                resolved_id, resolved_url, resolved_name = self.resolve_channel_using_oembed(video_id)
-                                if resolved_id:
-                                    video_info['channel_id'] = resolved_id
-                                if resolved_url and not video_info.get('channel_url'):
-                                    video_info['channel_url'] = resolved_url
-                                if resolved_name and not video_info.get('channel_name'):
-                                    video_info['channel_name'] = resolved_name
-                            
-                            # Still missing channel? skip to avoid DB FK issues
-                            if not video_info['channel_id']:
-                                continue
-                            
-                            processed_video_ids.add(video_id)
-                            
-                            if video_info['publish_date']:
-                                try:
-                                    publish_date = datetime.fromisoformat(video_info['publish_date'])
-                                    if publish_date < cutoff_date:
-                                        old_videos_count += 1
-                                        if old_videos_count >= max_old_videos:
-                                            update_status(i + 1, "Reached content older than 30 days", "Finishing up...", f"Found {len(processed_video_ids)} videos total")
-                                            return
-                                        continue
-                                except ValueError:
-                                    continue
-                            
-                            cursor = self.db.db.cursor()
-                            cursor.execute('SELECT id FROM videos WHERE id = ?', (video_id,))
-                            existing_video = cursor.fetchone()
+                live.update(render_status(i + 1, "Processing latest videos"))
 
-                            # Ensure channel row exists before upserting the video
-                            self.ensure_channel_record(
-                                video_info['channel_id'],
-                                video_info.get('channel_name'),
-                                video_info.get('channel_url')
-                            )
-                            
-                            if existing_video:
-                                # Update existing video
-                                cursor.execute('''
-                                    UPDATE videos 
-                                    SET title = ?, url = ?, thumbnail = ?, views = ?, published_date = ?, duration = ?
-                                    WHERE id = ?
-                                ''', (
-                                    video_info['title'],
-                                    video_info['url'],
-                                    video_info['thumbnail'],
-                                    video_info['views'],
-                                    video_info['publish_date'],
-                                    video_info.get('duration'),
-                                    video_id
-                                ))
-                                self.db.db.commit()  # Commit the update
-                                updated_in_this_scroll += 1
-                                total_updated += 1
-                            else:
-                                # Insert new video using a simplified insert to avoid double counting
-                                cursor.execute('''
-                                    INSERT INTO videos 
-                                    (id, channel_id, title, url, thumbnail, views, published_date, duration)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                ''', (
-                                    video_id,
-                                    video_info['channel_id'],
-                                    video_info['title'],
-                                    video_info['url'],
-                                    video_info['thumbnail'],
-                                    video_info['views'],
-                                    video_info['publish_date'],
-                                    video_info.get('duration')
-                                ))
-                                self.db.db.commit()  # Commit the insert
-                                new_in_this_scroll += 1
-                                total_new += 1
-                            
-                            old_videos_count = 0
-                            
-                            # Update status every few videos
-                            if (new_in_this_scroll + updated_in_this_scroll) % 5 == 0:
-                                update_status(
-                                    i + 1,
-                                    f"Processing videos from scroll {i + 1}",
-                                    f"Added {new_in_this_scroll} new, Updated {updated_in_this_scroll} existing",
-                                    f"Total videos processed: {len(processed_video_ids)}"
-                                )
-                        
-                        except Exception as e:
-                            continue
-                
-                if new_in_this_scroll == 0 and updated_in_this_scroll == 0:
-                    no_new_content_count += 1
-                    if no_new_content_count >= max_no_new_content:
-                        break
-                else:
-                    no_new_content_count = 0
-                
-                current_height = self.page.evaluate('document.documentElement.scrollHeight')
-                if current_height == last_height:
-                    no_new_content_count += 1
-                    if no_new_content_count >= max_no_new_content:
-                        update_status(i + 1, "Reached end of feed", "Finishing up...", f"Found {len(processed_video_ids)} videos total")
-                        break
-                
-                last_height = current_height
-                self.scroll_page()
-                
-            except Exception as e:
-                if i < 5:
-                    self.wait_for_page_load(2)
-                    continue
-                else:
-                    break
-        
-        # Clear the rolling status and print final summary
-        print("\033[3A\033[J")  # Move up 3 lines and clear to end of screen
-        print(f"\nScan complete! {total_new} new videos added, {total_updated} videos updated, {trimmed_count} videos trimmed")
+        reason_text = stop_reason or "Completed planned scrolls"
+        self.console.print(f"\n[bold green]󰗣  Scan complete ({reason_text}).[/] {total_new} new videos added, {total_updated} videos updated, {trimmed_count} videos trimmed.")
+        if missing_channel_videos:
+            self.console.print(f"[bold yellow]⚠️  Skipped {missing_channel_videos} videos whose channels are not in the database.[/]")
+            if missing_channel_log:
+                self.console.print("Examples:")
+                for entry in missing_channel_log[:5]:
+                    self.console.print(f"  - {entry}")
+                if len(missing_channel_log) > 5:
+                    self.console.print(f"  ... and {len(missing_channel_log) - 5} more")
+            self.console.print("Run `uv run scrape_channel_stats.py` to refresh channel records, then re-run video scrape.")
 
     def extract_video_info(self, page):
         """Extract video information from the page."""
