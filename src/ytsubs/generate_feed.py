@@ -1,26 +1,31 @@
-import sqlite3
-from datetime import datetime
-import os
-import math
 import json
-from pathlib import Path
+import os
+import sqlite3
+import tempfile
 import webbrowser
+from datetime import datetime
+from importlib import resources
+from pathlib import Path
 
-def get_db():
+from .db_schema import resolve_db_path
+
+def get_db(db_path: Path):
     try:
-        conn = sqlite3.connect('youtube.db')
+        conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
     except sqlite3.Error as e:
         print(f"Database connection error: {e}")
         raise
 
-def check_db_initialized():
-    if not os.path.exists('youtube.db'):
-        return False, "Database file not found. Please run init_db.py first."
+def check_db_initialized(db_path: Path):
+    if not db_path.exists():
+        return False, (
+            "Database file not found. Run `ytsubs scrape-videos` or `ytsubs scrape-channels` first."
+        )
     
     try:
-        db = get_db()
+        db = get_db(db_path)
         cursor = db.cursor()
         
         cursor.execute("""
@@ -34,7 +39,10 @@ def check_db_initialized():
         
         if not required_tables.issubset(existing_tables):
             missing_tables = required_tables - existing_tables
-            return False, f"Missing tables: {', '.join(missing_tables)}. Please run init_db.py first."
+            return False, (
+                f"Missing tables: {', '.join(missing_tables)}. "
+                "Run `ytsubs scrape-videos` or `ytsubs scrape-channels` to initialize."
+            )
         
         return True, None
         
@@ -52,12 +60,13 @@ def get_thumbnail_url(video_id, thumbnail=None):
 
 def get_videos():
     try:
-        is_initialized, error_message = check_db_initialized()
+        db_path = resolve_db_path()
+        is_initialized, error_message = check_db_initialized(db_path)
         if not is_initialized:
             print(f"Error: {error_message}")
             return []
 
-        db = get_db()
+        db = get_db(db_path)
         cursor = db.cursor()
         
         cursor.execute('''
@@ -247,19 +256,20 @@ def get_videos():
         print(f"Error: {e}")
         return []
 
-def generate_html(videos):
-    # Read the template HTML file
-    template_path = Path(__file__).parent / 'static_template.html'
-    with open(template_path, 'r') as f:
-        template = f.read()
+def generate_html(videos, output_path: Path, open_browser: bool = True):
+    template = (
+        resources.files("ytsubs")
+        .joinpath("static_template.html")
+        .read_text(encoding="utf-8")
+    )
     
     # Insert the video data as a JSON array
     video_data_json = json.dumps(videos)
     html = template.replace('const videoData = VIDEO_DATA_PLACEHOLDER;', f'const videoData = {video_data_json};')
     
-    # Write the generated HTML file
-    output_path = Path(__file__).parent / 'youtube_feed.html'
-    with open(output_path, 'w') as f:
+    output_path = output_path.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open('w', encoding="utf-8") as f:
         f.write(html)
     
     # Get absolute file URL
@@ -269,15 +279,12 @@ def generate_html(videos):
     print(f"Found {len(videos)} videos")
     if videos:
         print(f"Date range: {videos[-1]['published_date']} to {videos[0]['published_date']}")
-    print(f"\nOpening in default browser...")
-    
-    # Open the file in the default browser
-    webbrowser.open(file_url)
+    if open_browser:
+        print(f"\nOpening in default browser...")
+        webbrowser.open(file_url)
 
-def main():
+def run(output_path: Path | None = None, open_browser: bool = True) -> None:
     print("Generating static YouTube feed page...")
     videos = get_videos()
-    generate_html(videos)
-
-if __name__ == '__main__':
-    main() 
+    target = output_path or (Path(tempfile.gettempdir()) / "ytsubs_feed.html")
+    generate_html(videos, output_path=target, open_browser=open_browser)

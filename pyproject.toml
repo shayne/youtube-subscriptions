@@ -1,11 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "youtube-subscriptions"
+name = "ytsubs"
 version = "0.1.0"
-description = "A tool for tracking YouTube subscriptions that displays videos sorted by performance score. Features channel stats and video scrapers using Playwright, stores data in SQLite, and generates a static Preact-based viewer."
+description = "Personal YouTube subscriptions scraper that ranks videos and generates a static feed."
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "Shayne Sweeney", email = "79330+shayne@users.noreply.github.com" },
+]
+keywords = ["youtube", "subscriptions", "scraper", "playwright", "feed", "ranking"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Utilities",
+]
 dependencies = [
     "playwright>=1.51.0",
     "rich>=14.2.0",
     "textual>=6.8.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/shayne/ytsubs"
+Repository = "https://github.com/shayne/ytsubs"
+Issues = "https://github.com/shayne/ytsubs/issues"
+
+[project.scripts]
+ytsubs = "ytsubs.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ytsubs = ["schema.sql", "static_template.html"]
+
+[tool.ty.src]
+include = ["src"]

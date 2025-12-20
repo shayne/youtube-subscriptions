@@ -1,5 +1,8 @@
 .PHONY: clean reset-db reset-videos reset-channels help
 
+XDG_STATE_HOME ?= $(HOME)/.local/state
+DB_PATH ?= $(XDG_STATE_HOME)/ytsubs/youtube.db
+
 help:
 	@echo "Available commands:"
 	@echo "  make clean          - Remove Python cache files"
@@ -13,15 +16,16 @@ clean:
 
 reset-db:
 	@echo "Resetting database..."
-	@sqlite3 youtube.db < schema.sql
+	@mkdir -p $(dir $(DB_PATH))
+	@sqlite3 $(DB_PATH) < src/ytsubs/schema.sql
 	@echo "Database reset complete"
 
 reset-videos:
 	@echo "Clearing videos table..."
-	@sqlite3 youtube.db "DELETE FROM videos;"
+	@sqlite3 $(DB_PATH) "DELETE FROM videos;"
 	@echo "Videos table cleared"
 
 reset-channels:
 	@echo "Clearing channels table..."
-	@sqlite3 youtube.db "DELETE FROM channels;"
-	@echo "Channels table cleared" 
+	@sqlite3 $(DB_PATH) "DELETE FROM channels;"
+	@echo "Channels table cleared"

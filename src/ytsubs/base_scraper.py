@@ -1,7 +1,6 @@
 from playwright.sync_api import sync_playwright, Playwright, BrowserContext, Page
 import time
 import os
-import shutil
 import tempfile
 from pathlib import Path
 import atexit
@@ -16,11 +15,20 @@ class BaseScraper:
     def __init__(self, debug: bool = False):
         self._browser = None
         self._page = None
-        self.chrome_profile_dir = Path("chrome_profile")
+        self.chrome_profile_dir = self._resolve_chrome_profile_dir()
         self._playwright = None
         self.headless = not debug  # Start in non-headless mode if debug=True
         # Register cleanup on exit
         atexit.register(self.cleanup)
+
+    @staticmethod
+    def _resolve_chrome_profile_dir() -> Path:
+        state_root = Path(
+            os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+        )
+        target_dir = state_root / "ytsubs" / "chrome_profile"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        return target_dir
 
     @property
     def playwright(self) -> Playwright:

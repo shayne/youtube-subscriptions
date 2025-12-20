@@ -7,7 +7,7 @@ Goals:
 3) Allow quick ad‑hoc filtering of titles without hard‑coding examples.
 
 Usage:
-    uv run python debug_scrape_videos.py --scrolls 4 --filter "gymkhana"
+    uv run ytsubs debug-scrape --scrolls 4 --filter "gymkhana"
 
 Notes for future debugging (LLM-friendly):
 - The page.evaluate snippet mirrors the selectors used in scrape_videos.py.
@@ -20,7 +20,7 @@ import json
 from collections import OrderedDict
 from typing import Dict, Any
 
-from base_scraper import BaseScraper
+from .base_scraper import BaseScraper
 
 
 def pretty(obj: Any) -> str:
@@ -169,12 +169,6 @@ class DebugVideoScraper(BaseScraper):
         """
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Debug YouTube subscription scraping")
-    parser.add_argument('--debug', action='store_true', help='Run with visible browser window')
-    parser.add_argument('--scrolls', type=int, default=6, help='Number of scroll batches to capture')
-    parser.add_argument('--filter', dest='title_filter', help='Optional case-insensitive substring to filter titles')
-    args = parser.parse_args()
-
-    scraper = DebugVideoScraper(debug=args.debug, scrolls=args.scrolls, title_filter=args.title_filter)
+def run(debug: bool = False, scrolls: int = 6, title_filter: str | None = None) -> None:
+    scraper = DebugVideoScraper(debug=debug, scrolls=scrolls, title_filter=title_filter)
     scraper.run()

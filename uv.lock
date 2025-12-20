@@ -188,9 +188,9 @@ wheels = [
 ]
 
 [[package]]
-name = "youtube-subscriptions"
+name = "ytsubs"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "playwright" },
     { name = "rich" },

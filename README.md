@@ -42,24 +42,33 @@ A tool to track YouTube subscriptions and surface high-performing videos. It con
 2. A video scraper that collects new videos from subscribed channels
 3. A static page generator that creates a feed of videos sorted by performance
 
-## Setup
+## Quick start (recommended: uvx)
+
+You can run the tool directly with `uvx` — no cloning and no manual installs:
+
+```bash
+uvx ytsubs scrape-channels
+uvx ytsubs scrape-videos
+uvx ytsubs generate-feed
+```
+
+## Setup (local dev)
 
 1. Requirements:
 
-   - Python 3.7+
+   - Python 3.12+
    - Google Chrome browser
 
-2. Create Python environment and install dependencies:
+2. (Optional) Install tool versions with mise:
 
 ```bash
-# Create virtual environment
-python -m venv .venv
+mise install
+```
 
-# Activate virtual environment
-source .venv/bin/activate
+3. Install dependencies with uv:
 
-# Install dependencies
-pip install -r requirements.txt
+```bash
+uv sync
 ```
 
 ## Usage
@@ -69,34 +78,46 @@ pip install -r requirements.txt
 Run these commands in order:
 
 ```bash
-python scrape_channel_stats.py  # When Chrome opens, log in to YouTube
-python scrape_videos.py         # Collect recent videos
-python generate_feed.py         # Generate the feed
+uv run ytsubs scrape-channels   # When Chrome opens, log in to YouTube
+uv run ytsubs scrape-videos     # Collect recent videos
+uv run ytsubs generate-feed     # Generate the feed
 ```
 
-Your YouTube login is saved in the `chrome_profile/` directory, so you'll only need to log in once. Subsequent runs will reuse this profile.
+Your YouTube login is saved in `~/.local/state/ytsubs/chrome_profile` (or `$XDG_STATE_HOME/ytsubs/chrome_profile`), so you'll only need to log in once. Subsequent runs will reuse this profile.
 
 ### Regular usage
 
 1. Collect video data:
 
 ```bash
-python scrape_videos.py  # Run daily to get new videos
+uv run ytsubs scrape-videos  # Run daily to get new videos
 ```
 
 2. Update channel statistics (subscriber counts, average views):
 
 ```bash
-python scrape_channel_stats.py  # Run occasionally (e.g., monthly)
+uv run ytsubs scrape-channels  # Run occasionally (e.g., monthly)
 ```
 
 3. Generate the feed:
 
 ```bash
-python generate_feed.py  # Creates youtube_feed.html
+uv run ytsubs generate-feed  # Creates ytsubs_feed.html in your temp directory
 ```
 
-Open `youtube_feed.html` in your browser to view your subscription feed.
+Open the printed `ytsubs_feed.html` path in your browser to view your subscription feed.
+
+### Data locations (XDG)
+
+- Chrome profile: `~/.local/state/ytsubs/chrome_profile` (or `$XDG_STATE_HOME/ytsubs/chrome_profile`)
+- SQLite DB: `~/.local/state/ytsubs/youtube.db` (or `$XDG_STATE_HOME/ytsubs/youtube.db`)
+- Feed output (default): your temp directory (`ytsubs_feed.html`)
+
+### Debug tooling
+
+```bash
+uv run ytsubs debug-scrape --scrolls 4 --filter "gymkhana"
+```
 
 ## Development
 
@@ -117,5 +138,5 @@ The project includes several helpful make commands:
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.12+
 - Google Chrome

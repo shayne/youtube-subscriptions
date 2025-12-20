@@ -4,10 +4,12 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.egg-info/
 .venv/
 venv/
 ENV/
 .envrc
+.direnv/
 
 # Database
 *.db
@@ -15,7 +17,6 @@ ENV/
 *.sqlite3
 
 # Browser profiles and automation
-chrome_profile/
 .playwright/
 playwright-log.txt
 
@@ -25,16 +26,6 @@ playwright-log.txt
 *.swp
 *.swo
 .DS_Store
-
-# The static feed
-youtube_feed.html
-
-# Devenv
-.devenv*
-devenv.local.nix
-
-# direnv
-.direnv
 
 # pre-commit
 .pre-commit-config.yaml

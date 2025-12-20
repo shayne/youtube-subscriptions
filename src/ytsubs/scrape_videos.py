@@ -1,8 +1,7 @@
-from base_scraper import BaseScraper
-from db_schema import YouTubeDB
+from .base_scraper import BaseScraper
+from .db_schema import YouTubeDB
 from datetime import datetime, timedelta
 import re
-import argparse
 import json
 from urllib import request
 
@@ -10,7 +9,6 @@ from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TaskID
 
 class VideoScraper(BaseScraper):
@@ -476,7 +474,7 @@ class VideoScraper(BaseScraper):
                     self.console.print(f"  - {entry}")
                 if len(missing_channel_log) > 5:
                     self.console.print(f"  ... and {len(missing_channel_log) - 5} more")
-            self.console.print("Run `uv run scrape_channel_stats.py` to refresh channel records, then re-run video scrape.")
+            self.console.print("Run `uv run ytsubs scrape-channels` to refresh channel records, then re-run video scrape.")
 
     def extract_video_info(self, page):
         """Extract video information from the page."""
@@ -522,23 +520,23 @@ class VideoScraper(BaseScraper):
             print(f"Error extracting video info: {str(e)}")
             return []
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Scrape YouTube subscription videos')
-    parser.add_argument('--debug', action='store_true', help='Run in non-headless mode')
-    args = parser.parse_args()
-    
-    scraper = VideoScraper(debug=args.debug)
+def run(debug: bool = False, generate_feed_after: bool = True) -> None:
+    scraper = VideoScraper(debug=debug)
     scraper.run()  # Use run() instead of scrape() to ensure proper setup
-    
+
+    if not generate_feed_after:
+        return
+
     # Check if we have channel data and generate feed if we do
     db = scraper.db
     cursor = db.db.cursor()
     cursor.execute('SELECT COUNT(*) FROM channels WHERE subscriber_count > 0')
     channel_count = cursor.fetchone()[0]
-    
+
     if channel_count > 0:
         print("\nChannel data found - generating feed...")
-        from generate_feed import main as generate_feed
-        generate_feed()
+        from . import generate_feed
+
+        generate_feed.run()
     else:
-        print("\nNo channel data found. Run scrape_channel_stats.py to collect channel data.") 
+        print("\nNo channel data found. Run `ytsubs scrape-channels` to collect channel data.")

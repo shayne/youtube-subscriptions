@@ -1,13 +1,13 @@
-import sqlite3
-from datetime import datetime, timedelta
-import re
 import os
+import sqlite3
+from importlib import resources
+from pathlib import Path
 
 class YouTubeDB:
     db: sqlite3.Connection
 
-    def __init__(self, db_path: str = 'youtube.db'):
-        self.db_path = db_path
+    def __init__(self, db_path: str | None = None):
+        self.db_path = resolve_db_path(db_path)
         self.setup_database()
     
     def setup_database(self):
@@ -27,10 +27,12 @@ class YouTubeDB:
         
         # Only initialize if tables are missing
         if not required_tables.issubset(existing_tables):
-            # Read and execute schema.sql
-            schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-            with open(schema_path, 'r') as f:
-                cursor.executescript(f.read())
+            schema_text = (
+                resources.files("ytsubs")
+                .joinpath("schema.sql")
+                .read_text(encoding="utf-8")
+            )
+            cursor.executescript(schema_text)
             self.db.commit()
 
     def get_last_video_date(self):
@@ -131,4 +133,16 @@ class YouTubeDB:
     def close(self):
         """Close the database connection"""
         if self.db:
-            self.db.close() 
+            self.db.close()
+
+
+def resolve_db_path(db_path: str | None = None) -> Path:
+    if db_path:
+        return Path(db_path).expanduser()
+
+    state_root = Path(
+        os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+    )
+    target = state_root / "ytsubs" / "youtube.db"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target

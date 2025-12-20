@@ -26,11 +26,12 @@ uv run python <script.py>
 
 ## Project Structure
 
-- `base_scraper.py` - Base class for Playwright-based scrapers
-- `scrape_videos.py` - Scrapes subscription feed videos
-- `scrape_channel_stats.py` - Scrapes channel statistics
-- `db_schema.py` - SQLite database schema and operations
-- `generate_feed.py` - Generates static HTML feed
+- `src/ytsubs/base_scraper.py` - Base class for Playwright-based scrapers
+- `src/ytsubs/scrape_videos.py` - Scrapes subscription feed videos
+- `src/ytsubs/scrape_channel_stats.py` - Scrapes channel statistics
+- `src/ytsubs/db_schema.py` - SQLite database schema and operations
+- `src/ytsubs/generate_feed.py` - Generates static HTML feed
+- `src/ytsubs/cli.py` - CLI entry point and subcommands
 
 ## Makefile Commands
 
