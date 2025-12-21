@@ -1,13 +1,12 @@
 import json
 import os
 import sqlite3
-import tempfile
 import webbrowser
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
 
-from .db_schema import resolve_db_path
+from .db_schema import resolve_db_path, resolve_state_dir
 
 def get_db(db_path: Path):
     try:
@@ -283,8 +282,25 @@ def generate_html(videos, output_path: Path, open_browser: bool = True):
         print(f"\nOpening in default browser...")
         webbrowser.open(file_url)
 
+def feed_path() -> Path:
+    return resolve_state_dir() / "ytsubs_feed.html"
+
+
+def open_feed() -> bool:
+    target = feed_path()
+    if not target.exists():
+        print(f"Feed not found at: {target}")
+        print("Run `ytsubs scrape-videos` to generate it.")
+        return False
+
+    file_url = f"file://{target.resolve()}"
+    print(f"Opening feed: {target}")
+    webbrowser.open(file_url)
+    return True
+
+
 def run(output_path: Path | None = None, open_browser: bool = True) -> None:
     print("Generating static YouTube feed page...")
     videos = get_videos()
-    target = output_path or (Path(tempfile.gettempdir()) / "ytsubs_feed.html")
+    target = output_path or feed_path()
     generate_html(videos, output_path=target, open_browser=open_browser)

@@ -136,13 +136,17 @@ class YouTubeDB:
             self.db.close()
 
 
+def resolve_state_dir() -> Path:
+    state_root = Path(
+        os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+    )
+    target = state_root / "ytsubs"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def resolve_db_path(db_path: str | None = None) -> Path:
     if db_path:
         return Path(db_path).expanduser()
 
-    state_root = Path(
-        os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
-    )
-    target = state_root / "ytsubs" / "youtube.db"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    return target
+    return resolve_state_dir() / "youtube.db"

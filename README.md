@@ -49,7 +49,7 @@ You can run the tool directly with `uvx` — no cloning and no manual installs:
 ```bash
 uvx ytsubs scrape-channels
 uvx ytsubs scrape-videos
-uvx ytsubs generate-feed
+uvx ytsubs open
 ```
 
 ## Setup (local dev)
@@ -79,8 +79,8 @@ Run these commands in order:
 
 ```bash
 uv run ytsubs scrape-channels   # When Chrome opens, log in to YouTube
-uv run ytsubs scrape-videos     # Collect recent videos
-uv run ytsubs generate-feed     # Generate the feed
+uv run ytsubs scrape-videos     # Collect recent videos and generate the feed
+uv run ytsubs open              # Open the feed in your browser
 ```
 
 Your YouTube login is saved in `~/.local/state/ytsubs/chrome_profile` (or `$XDG_STATE_HOME/ytsubs/chrome_profile`), so you'll only need to log in once. Subsequent runs will reuse this profile.
@@ -99,19 +99,19 @@ uv run ytsubs scrape-videos  # Run daily to get new videos
 uv run ytsubs scrape-channels  # Run occasionally (e.g., monthly)
 ```
 
-3. Generate the feed:
+3. Open the feed:
 
 ```bash
-uv run ytsubs generate-feed  # Creates ytsubs_feed.html in your temp directory
+uv run ytsubs open  # Opens the latest feed
 ```
 
-Open the printed `ytsubs_feed.html` path in your browser to view your subscription feed.
+The feed is written to `~/.local/state/ytsubs/ytsubs_feed.html` (or `$XDG_STATE_HOME/ytsubs/ytsubs_feed.html`).
 
 ### Data locations (XDG)
 
 - Chrome profile: `~/.local/state/ytsubs/chrome_profile` (or `$XDG_STATE_HOME/ytsubs/chrome_profile`)
 - SQLite DB: `~/.local/state/ytsubs/youtube.db` (or `$XDG_STATE_HOME/ytsubs/youtube.db`)
-- Feed output (default): your temp directory (`ytsubs_feed.html`)
+- Feed output: `~/.local/state/ytsubs/ytsubs_feed.html` (or `$XDG_STATE_HOME/ytsubs/ytsubs_feed.html`)
 
 ### Debug tooling
 

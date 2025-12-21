@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from . import generate_feed, scrape_channel_stats, scrape_videos
 
@@ -40,21 +39,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scrape_channels_parser.set_defaults(func=_run_scrape_channels)
 
-    generate_feed_parser = subparsers.add_parser(
-        "generate-feed",
-        help="Generate the static HTML feed.",
+    open_feed_parser = subparsers.add_parser(
+        "open",
+        help="Open the latest generated feed.",
     )
-    generate_feed_parser.add_argument(
-        "--output",
-        type=Path,
-        help="Output HTML path (default: temp dir).",
-    )
-    generate_feed_parser.add_argument(
-        "--no-open",
-        action="store_true",
-        help="Do not open the generated HTML in a browser.",
-    )
-    generate_feed_parser.set_defaults(func=_run_generate_feed)
+    open_feed_parser.set_defaults(func=_run_open_feed)
 
     debug_scrape_parser = subparsers.add_parser(
         "debug-scrape",
@@ -94,12 +83,9 @@ def _run_scrape_channels(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_generate_feed(args: argparse.Namespace) -> int:
-    generate_feed.run(
-        output_path=args.output,
-        open_browser=not args.no_open,
-    )
-    return 0
+def _run_open_feed(args: argparse.Namespace) -> int:
+    opened = generate_feed.open_feed()
+    return 0 if opened else 1
 
 
 def _run_debug_scrape(args: argparse.Namespace) -> int:
