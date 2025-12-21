@@ -47,9 +47,9 @@ A tool to track YouTube subscriptions and surface high-performing videos. It con
 You can run the tool directly with `uvx` — no cloning and no manual installs:
 
 ```bash
-uvx ytsubs scrape-channels
-uvx ytsubs scrape-videos
-uvx ytsubs open
+uvx ytsubs@latest scrape-channels
+uvx ytsubs@latest scrape-videos
+uvx ytsubs@latest open
 ```
 
 ## Setup (local dev)
